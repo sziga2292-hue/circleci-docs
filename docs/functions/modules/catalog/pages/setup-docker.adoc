@@ -1,6 +1,7 @@
 = setup-docker
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Install the Docker CLI, Buildx, and Docker Compose, then log in to registries and build, push, merge, and lint images in a CircleCI job.
 :experimental:
 
@@ -239,7 +240,7 @@ Call the default command as `setup-docker`. It installs the Docker CLI and its p
 --
 
 [#login]
-=== login
+=== Login
 
 Call `setup-docker/login` to log in to a container registry after you install Docker. For an Amazon ECR registry, the command uses `docker-credential-ecr-login`, which reads AWS credentials from the environment, and ignores the username and password variables.
 
@@ -260,7 +261,7 @@ Call `setup-docker/login` to log in to a container registry after you install Do
 --
 
 [#build]
-=== build
+=== Build
 
 Call `setup-docker/build` to build an image with Buildx and optionally push it. The command installs Buildx if needed and needs a reachable Docker engine. Use `setup_remote_docker`, a `machine` executor, or set `DOCKER_HOST`.
 
@@ -300,7 +301,7 @@ Call `setup-docker/build` to build an image with Buildx and optionally push it. 
 --
 
 [#merge]
-=== merge
+=== Merge
 
 Call `setup-docker/merge` to combine per-platform images, each pushed by digest with `build`, into one multi-platform manifest index. The command needs no Docker engine.
 
@@ -320,7 +321,7 @@ Call `setup-docker/merge` to combine per-platform images, each pushed by digest 
 --
 
 [#lint]
-=== lint
+=== Lint
 
 Call `setup-docker/lint` to lint Dockerfiles with link:https://github.com/hadolint/hadolint[`hadolint`]. The command installs `hadolint` and needs no Docker engine.
 

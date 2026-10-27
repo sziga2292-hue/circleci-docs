@@ -1,6 +1,7 @@
 = Functions catalog
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Browse the CircleCI functions for installing languages, cloud CLIs, Docker, and browsers in your jobs.
 :experimental:
 

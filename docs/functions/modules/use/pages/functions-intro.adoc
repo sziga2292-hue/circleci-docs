@@ -1,6 +1,7 @@
 = Functions overview
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Starting point for using CircleCI functions to set up tools, dependencies, and credentials in your jobs.
 :experimental:
 

@@ -1,6 +1,7 @@
 = Functions concepts
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Conceptual overview of CircleCI functions, including commands, arguments, aliases, versions, and validation.
 :experimental:
 

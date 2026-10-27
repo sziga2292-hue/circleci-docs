@@ -1,6 +1,7 @@
 = Functions FAQ
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: This page answers the most frequently asked questions about CircleCI functions.
 :experimental:
 

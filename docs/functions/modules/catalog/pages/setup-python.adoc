@@ -1,6 +1,7 @@
 = setup-python
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Install Python and pip for every later step in the job, then install and cache your project's dependencies.
 :experimental:
 
@@ -155,7 +156,7 @@ Called as `<alias>` (for example, `python`). Installs Python and links `python`,
 --
 
 [#install-packages]
-=== install-packages
+=== Install packages
 
 Called as `<alias>/install-packages` (for example, `python/install-packages`). Installs your project's dependencies with its package manager, restoring the virtual environment and package caches before the install and saving them afterwards.
 

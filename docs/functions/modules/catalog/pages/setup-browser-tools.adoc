@@ -1,6 +1,7 @@
 = setup-browser-tools
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Install Chrome, Chrome for Testing, ChromeDriver, Firefox, geckodriver, Microsoft Edge, and Edge WebDriver in a CircleCI job.
 :experimental:
 
@@ -116,9 +117,9 @@ Turn on `use-cache` when downloads from a vendor are unreliable. Caching increas
 The function has no default command. Call each command as `browser-tools/<command>`, where `browser-tools` is the alias you declare in the `functions:` block.
 
 [#install-browser-tools]
-=== install-browser-tools
+=== Install browser tools
 
-Installs a configurable set of browsers and drivers in one step. The default set is Chrome and ChromeDriver plus Firefox and geckodriver.
+Call this command as `browser-tools/install-browser-tools`. It installs a configurable set of browsers and drivers in one step. The default set is Chrome and ChromeDriver plus Firefox and geckodriver.
 
 [.table-scroll]
 --
@@ -149,9 +150,9 @@ Installs a configurable set of browsers and drivers in one step. The default set
 --
 
 [#install-chrome]
-=== install-chrome
+=== Install Chrome
 
-Installs Google Chrome, or Chromium on Alpine.
+Call this command as `browser-tools/install-chrome`. It installs Google Chrome, or Chromium on Alpine.
 
 [.table-scroll]
 --
@@ -168,9 +169,9 @@ Installs Google Chrome, or Chromium on Alpine.
 --
 
 [#install-chromedriver]
-=== install-chromedriver
+=== Install ChromeDriver
 
-Installs the ChromeDriver that matches the installed Chrome. Install Chrome first.
+Call this command as `browser-tools/install-chromedriver`. It installs the ChromeDriver that matches the installed Chrome. Install Chrome first.
 
 [.table-scroll]
 --
@@ -183,9 +184,9 @@ Installs the ChromeDriver that matches the installed Chrome. Install Chrome firs
 --
 
 [#install-firefox]
-=== install-firefox
+=== Install Firefox
 
-Installs Mozilla Firefox.
+Call this command as `browser-tools/install-firefox`. It installs Mozilla Firefox.
 
 [.table-scroll]
 --
@@ -201,9 +202,9 @@ Installs Mozilla Firefox.
 --
 
 [#install-geckodriver]
-=== install-geckodriver
+=== Install geckodriver
 
-Installs geckodriver, the WebDriver proxy for Firefox.
+Call this command as `browser-tools/install-geckodriver`. It installs geckodriver, the WebDriver proxy for Firefox.
 
 [.table-scroll]
 --
@@ -217,9 +218,9 @@ Installs geckodriver, the WebDriver proxy for Firefox.
 --
 
 [#install-chrome-for-testing-command]
-=== install-chrome-for-testing
+=== Install Chrome for Testing
 
-Installs Chrome for Testing and, by default, its matching ChromeDriver.
+Call this command as `browser-tools/install-chrome-for-testing`. It installs Chrome for Testing and, by default, its matching ChromeDriver.
 
 [.table-scroll]
 --
@@ -234,9 +235,9 @@ Installs Chrome for Testing and, by default, its matching ChromeDriver.
 --
 
 [#install-edge]
-=== install-edge
+=== Install the Microsoft Edge browser
 
-Installs Microsoft Edge.
+Call this command as `browser-tools/install-edge`. It installs Microsoft Edge.
 
 [.table-scroll]
 --
@@ -249,9 +250,9 @@ Installs Microsoft Edge.
 --
 
 [#install-edge-driver]
-=== install-edge-driver
+=== Install the Microsoft Edge driver
 
-Installs the Edge WebDriver that matches the installed Edge. Install Edge first.
+Call this command as `browser-tools/install-edge-driver`. It installs the Edge WebDriver that matches the installed Edge. Install Edge first.
 
 [.table-scroll]
 --

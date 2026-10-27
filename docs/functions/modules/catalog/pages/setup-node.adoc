@@ -1,6 +1,7 @@
 = setup-node
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Install Node.js, put node, npm, and npx on PATH, and install dependencies with a cached package manager.
 :experimental:
 
@@ -155,7 +156,7 @@ Called as `<alias>` (for example, `node`). Installs Node.js and links `node`, `n
 --
 
 [#install-packages]
-=== install-packages
+=== Install packages
 
 Called as `<alias>/install-packages` (for example, `node/install-packages`). Installs the project's dependencies with its package manager and caches what the package manager downloads.
 

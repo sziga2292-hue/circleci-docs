@@ -1,6 +1,7 @@
 = setup-github-cli
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Install the GitHub CLI (gh) in a CircleCI job and optionally authenticate it with a token for gh and git commands.
 :experimental:
 

@@ -1,6 +1,7 @@
 = setup-go
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Install a Go toolchain, put it on PATH for the rest of the job, and cache Go modules and build output.
 :experimental:
 

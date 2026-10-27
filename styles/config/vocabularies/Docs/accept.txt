@@ -463,3 +463,5 @@ MSTest
 glibc
 cmd
 setup-(aws|browser-tools|docker|dotnet|github-cli|go|java|node|python|ruby)
+NuGet
+Chrome for Testing

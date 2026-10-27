@@ -1,6 +1,7 @@
 = setup-dotnet
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Install .NET SDKs and runtimes in a CircleCI job, cache NuGet packages, and restore and test .NET projects.
 :experimental:
 
@@ -203,7 +204,7 @@ Call the default command as `dotnet` (or your chosen alias). It installs SDKs an
 --
 
 [#restore]
-=== restore
+=== Restore
 
 Call this command as `dotnet/restore`. It runs `dotnet restore`, then `dotnet tool restore` when the project has a tool manifest.
 
@@ -236,7 +237,7 @@ Call this command as `dotnet/restore`. It runs `dotnet restore`, then `dotnet to
 --
 
 [#test]
-=== test
+=== Test
 
 Call this command as `dotnet/test`. It runs `dotnet test`, writes JUnit XML for `store_test_results`, and splits test projects across parallel nodes.
 
@@ -282,7 +283,7 @@ Call this command as `dotnet/test`. It runs `dotnet test`, writes JUnit XML for 
 == How it works
 
 [#installing-dotnet]
-=== Installing .NET
+=== Install the SDKs and runtimes
 
 The function resolves versions against Microsoft's release metadata and checks every download against the SHA-512 checksum that Microsoft publishes. When Microsoft lists the newest release of a floating version before its download is available, the function installs the previous release.
 

@@ -1,6 +1,7 @@
 = setup-aws
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Install the AWS CLI v2 in a CircleCI job and configure AWS credentials with OIDC role assumption or static access keys.
 :experimental:
 

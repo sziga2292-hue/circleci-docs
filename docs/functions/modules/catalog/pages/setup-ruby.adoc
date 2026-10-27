@@ -1,6 +1,7 @@
 = setup-ruby
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Install Ruby and Bundler for every later step in the job, then install and cache your project's gems with Bundler.
 :experimental:
 
@@ -161,7 +162,7 @@ Called as `<alias>` (for example, `ruby`). Installs Ruby, Bundler, and optionall
 --
 
 [#install-gems]
-=== install-gems
+=== Install gems
 
 Called as `<alias>/install-gems` (for example, `ruby/install-gems`). Installs the gems your `Gemfile` declares with the `bundle` on `PATH`, restoring the gem cache before the install and saving it afterwards. Run the default command first, or use an image with Ruby and Bundler on `PATH`, such as `cimg/ruby`.
 

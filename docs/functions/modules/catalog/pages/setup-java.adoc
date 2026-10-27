@@ -1,6 +1,7 @@
 = setup-java
 :page-badge: Beta
 :page-platform: Cloud
+:page-audience: developer
 :page-description: Install a Java Development Kit in a CircleCI job, and cache the dependencies that Maven or Gradle downloads.
 :experimental:
 
@@ -181,7 +182,7 @@ Call the default command as `java` (or your chosen alias). It installs one or mo
 --
 
 [#cache-dependencies]
-=== cache-dependencies
+=== Cache dependencies
 
 Call this command as `java/cache-dependencies`. It caches what a build tool downloads without installing a JDK.
 
@@ -249,7 +250,7 @@ With `cache-dependencies` set, the function restores the dependency cache when i
 
 | `gradle`
 | `~/.gradle/caches` and `~/.gradle/wrapper`
-| `**/*.gradle*`, `**/gradle.properties`, `**/gradle-wrapper.properties`, `gradle/*.versions.toml`, `**/versions.properties`, `buildSrc/**/Versions.kt`, and `buildSrc/**/Dependencies.kt`
+| `+**/*.gradle*+`, `+**/gradle.properties+`, `+**/gradle-wrapper.properties+`, `+gradle/*.versions.toml+`, `**/versions.properties`, `buildSrc/**/Versions.kt`, and `buildSrc/**/Dependencies.kt`
 |===
 --
 
