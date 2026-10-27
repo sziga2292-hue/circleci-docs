@@ -1,0 +1,272 @@
+= setup-go
+:page-badge: Beta
+:page-platform: Cloud
+:page-description: Install a Go toolchain, put it on PATH for the rest of the job, and cache Go modules and build output.
+:experimental:
+
+The `setup-go` function installs a Go toolchain and puts `go` and `gofmt` on `PATH` for every later step in the job. It also caches what your build downloads and compiles, so later runs start warm.
+
+* Installs any Go release by version spec, or the version your `go.mod` or `go.work` file declares.
+* Makes `go` available to later steps in any shell, with nothing to source or export.
+* Caches the Go module cache and build cache by default, with optional caching for golangci-lint.
+* Caches the installed toolchain, so a fresh executor can skip the download.
+* Runs on Linux, macOS, and Windows, including Alpine.
+
+[#quickstart]
+== Quickstart
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  go: github.com/circleci-functions/setup-go@v0.7.0
+
+jobs:
+  test:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - go:
+          with:
+            version: "1.24"
+            checksum: '{{ checksum "go.sum" }}'
+      - run: go test ./...
+
+workflows:
+  main:
+    jobs:
+      - test
+----
+
+The `go` step installs the newest stable Go 1.24 release and restores the module and build caches. Every later step in the job runs the installed `go`.
+
+To add the `functions:` entry at the latest version, run `circleci function add setup-go --as go`. To list published versions and arguments, run `circleci function get setup-go`.
+
+[#usage-examples]
+== Usage examples
+
+[#read-the-version-from-go-mod]
+=== Read the version from go.mod
+
+[,yaml]
+----
+- go:
+    with:
+      version-file: go.mod
+----
+
+The function reads the `go` directive and the `toolchain` line, and installs the higher of the two. That version is the toolchain a later `go` command switches to under the default `GOTOOLCHAIN=auto`, so no later step downloads one of its own.
+
+[#refresh-caches-when-dependencies-change]
+=== Refresh caches when dependencies change
+
+[,yaml]
+----
+- go:
+    with:
+      checksum: '{{ checksum "go.sum" }}'
+----
+
+CircleCI expands `{{ checksum "go.sum" }}` before the function runs. When the checksum changes, the module and build caches start from the newest entry saved in the current 72-hour window, so only what changed is downloaded or compiled again.
+
+[#cache-golangci-lint]
+=== Cache golangci-lint
+
+[,yaml]
+----
+- go:
+    with:
+      golangci-lint-cache: true
+      checksum: '{{ checksum "go.sum" }}'
+- run: golangci-lint run
+----
+
+The function caches the golangci-lint cache directory: `$GOLANGCI_LINT_CACHE` if set, and otherwise `golangci-lint` under the user cache directory. Set `GOLANGCI_LINT_CACHE` on the job, not on a later step, so the function sees the same value golangci-lint does.
+
+[#keep-caches-separate-in-a-monorepo]
+=== Keep caches separate in a monorepo
+
+[,yaml]
+----
+- go:
+    with:
+      version-file: services/api/go.mod
+      key: api
+      checksum: '{{ checksum "services/api/go.sum" }}'
+----
+
+The `key` argument adds a component to every cache key, so each module keeps its own caches.
+
+[#store-test-results]
+=== Store test results
+
+[,yaml]
+----
+- go
+- run: go run gotest.tools/gotestsum@v1.13.0 --junitfile test-results/junit.xml -- ./...
+- store_test_results:
+    path: test-results
+----
+
+The function does not write test results itself. Run your tests through gotestsum, which writes JUnit XML, and store the file it writes. If your module declares gotestsum as a tool, run `go tool gotestsum` instead so `go.mod` pins its version.
+
+[#arguments]
+== Arguments
+
+The `setup-go` function has one command, called as `<alias>` (for example, `go`). A step with no arguments installs the newest stable release with caching on.
+
+[.table-scroll]
+--
+[cols="2,1,2,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `version`
+| String
+| `stable`
+| Go version spec to install. Refer to the <<version-syntax>> section.
+
+| `version-file`
+| String
+| (empty)
+| Path to a `go.mod` or `go.work` file. Installs the newest patch its `go` directive allows, or its `toolchain` line if that is higher. Overrides `version` when set.
+
+| `detect-only`
+| Boolean
+| `false`
+| Use the `go` already on `PATH` instead of installing one. The function ignores `version` and `version-file`.
+
+| `install-dir`
+| String
+| `~/.cache/setup-go`
+| Base directory for Go toolchain installs.
+
+| `api-url`
+| String
+| (go.dev)
+| Base URL to fetch Go from instead of go.dev, for example a mirror. It must serve the go.dev JSON release list (`?mode=json&include=all`) and the archives it names, both from that base URL.
+
+| `cache`
+| Boolean
+| `true`
+| Restore the selected caches before your steps run and save them at the end of the job. Set to `false` to turn off all caching, including the toolchain cache.
+
+| `go-mod-cache`
+| Boolean
+| `true`
+| Cache the Go module cache (`GOMODCACHE`). Ignored when `cache` is `false`.
+
+| `build-cache`
+| Boolean
+| `true`
+| Cache the Go build cache (`GOCACHE`). Ignored when `cache` is `false`.
+
+| `golangci-lint-cache`
+| Boolean
+| `false`
+| Cache the golangci-lint cache directory. Ignored when `cache` is `false`.
+
+| `key`
+| String
+| (empty)
+| Cache key component that keeps caches separate, for example per module in a monorepo.
+
+| `checksum`
+| String
+| (empty)
+| Value that refreshes the caches when it changes, for example `{{ checksum "go.sum" }}`.
+|===
+--
+
+[#how-it-works]
+== How it works
+
+[#install-the-toolchain]
+=== Install the toolchain
+
+The function resolves the version spec against the go.dev release list, or against `api-url` when set, and downloads the matching release into `install-dir`. With caching on, the function saves the installed toolchain to the job cache and restores it in later jobs instead of downloading it again.
+
+[#link-the-toolchain-onto-path]
+=== Link the toolchain onto PATH
+
+Each step inherits its environment from the job, not from the step before it. Instead of changing `PATH`, the function links `go` and `gofmt` into a directory that is already on `PATH`, so every later process finds them in any shell. It prefers `$GOPATH/bin`, `~/.local/bin`, `~/bin`, and `/usr/local/bin`, in that order. The function then checks that `go` on `PATH` resolves to the toolchain it installed, and fails the step if it does not.
+
+When the function replaces an existing binary, it keeps the original beside it as `<name>.pathlink-old`. Nothing is written to `$BASH_ENV`. To find the toolchain location in a later step, run `go env GOROOT`.
+
+Anything `go install` builds is reachable by name when `$GOPATH/bin` is on `PATH`. If `$GOPATH/bin` does not exist, the function points it at a directory that is on `PATH`.
+
+[#cache-modules-and-build-output]
+=== Cache modules and build output
+
+With caching on, the function restores the module cache and build cache when its step runs, and saves them when the job ends. No other step in the job needs a cache step of its own. A job that fails, is canceled, or times out still saves what it downloaded and compiled. Cache problems never fail the job.
+
+Cache keys include the job name, the architecture, and the `key` and `checksum` values. The caches rotate every 72 hours, which keeps them from growing without limit.
+
+Because the build cache is restored, `go test` can print `ok <package> (cached)` instead of running a package's tests again. To run the tests every time, pass `-count=1` to `go test`. Compiling still uses the build cache.
+
+[#version-syntax]
+== Version syntax
+
+The `version` argument accepts the following forms:
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| Spec | Resolves to
+
+| `stable`
+| Newest stable release (default)
+
+| `latest`
+| Newest release, including unstable releases
+
+| `1.24`
+| Newest stable `go1.24.x`
+
+| `1.24.3`
+| `go1.24.3`
+|===
+--
+
+The `version-file` argument reads a `go.mod` or `go.work` file as follows:
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| Line | Resolves to
+
+| `toolchain go1.24.3`
+| `go1.24.3`
+
+| `go 1.24` or `go 1.24.0`
+| Newest stable `go1.24.x`
+
+| `go 1.24.3`
+| Newest stable `go1.24.x`, at least `go1.24.3`
+
+| `go 1.25rc1`
+| Newest stable `go1.25.x`, or the newest `go1.25` prerelease if no stable release exists
+|===
+--
+
+The `go` directive is a minimum, so the function installs the newest patch that meets it and never moves to a newer minor version. The function does not set `GOTOOLCHAIN`. Go releases before 1.21 did not enforce the `go` directive, so an older module can declare a version too old to build it. In that case, use `version` instead.
+
+[#platform-support]
+== Platform support
+
+The function runs on Linux, macOS, and Windows, on amd64 and arm64 architectures.
+
+* *Alpine and other `musl` distributions*: The function installs `gcc` and `musl-dev`, so `CGO_ENABLED=1` builds work.
+* *Windows*: Later steps find the toolchain in Bash, `cmd`, or PowerShell through small forwarding shims.
+* *Permissions*: If the link directory is not writable, the function uses `sudo -n` to create the link. On macOS system directories, the function does not use `sudo`.
+
+[#see-also]
+== See also
+
+* Refer to xref:use:functions-intro.adoc[Functions Overview] for a starting point on using functions.
+* Refer to xref:use:functions-concepts.adoc[Functions Concepts] for how commands, arguments, versions, and validation work.
+* Refer to xref:use:functions-catalog.adoc[Functions Catalog] for the other functions CircleCI publishes.

@@ -1,0 +1,364 @@
+= setup-dotnet
+:page-badge: Beta
+:page-platform: Cloud
+:page-description: Install .NET SDKs and runtimes in a CircleCI job, cache NuGet packages, and restore and test .NET projects.
+:experimental:
+
+The `setup-dotnet` function installs .NET SDKs and runtimes for the rest of the job. It also caches NuGet packages, and restores and tests .NET projects, writing test results that CircleCI can display and split by.
+
+* SDKs and runtimes from a version spec or from `global.json`, side by side in one installation.
+* A NuGet package cache, restored when the step runs and saved at the end of the job.
+* Authentication for a private NuGet feed.
+* A `restore` command that uses locked mode when the project has lock files.
+* A `test` command that writes JUnit XML and splits test projects across parallel nodes.
+
+[#quickstart]
+== Quickstart
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  dotnet: github.com/circleci-functions/setup-dotnet@v0.1.0
+
+jobs:
+  test:
+    docker:
+      - image: cimg/base:current
+    parallelism: 2
+    steps:
+      - checkout
+      - dotnet:
+          with:
+            dotnet-version: "10.0.x"
+      - dotnet/restore
+      - dotnet/test
+      - store_test_results:
+          path: test-results
+----
+
+The `dotnet` step installs the newest .NET 10.0 SDK and restores the NuGet cache. The `dotnet/test` step runs this node's share of the test projects and writes JUnit XML to `test-results` for `store_test_results`.
+
+[#usage-examples]
+== Usage examples
+
+[#install-several-sdks-and-a-runtime]
+=== Install several SDKs and a runtime
+
+[,yaml]
+----
+- dotnet:
+    with:
+      dotnet-version: |
+        8.0
+        10.0.x
+      runtime-version: "9.0"
+----
+
+Separate versions with commas or newlines. Each runtime version installs the ASP.NET Core Runtime, which includes the .NET Runtime.
+
+[#install-the-sdk-your-project-asks-for]
+=== Install the SDK your project asks for
+
+[,yaml]
+----
+- dotnet
+----
+
+With no `dotnet-version`, the function installs the SDK that a `global.json` in the working directory or a parent asks for. To use a `global.json` elsewhere, set `global-json-file`.
+
+[#authenticate-a-private-nuget-feed]
+=== Authenticate a private NuGet feed
+
+[,yaml]
+----
+- dotnet:
+    with:
+      dotnet-version: "10.0.x"
+      source-url: https://nuget.pkg.github.com/my-org/index.json
+      token-env: GITHUB_PACKAGES_TOKEN
+----
+
+The function reads the token from the environment variable named in `token-env`, for example a variable from a context. For several feeds with different tokens, define the feeds in your `nuget.config`. Then set NuGet's `NuGetPackageSourceCredentials_<source name>` variable for each one in a context, for example `Username=me;Password=$TOKEN`.
+
+[#restore-and-test-a-solution]
+=== Restore and test a solution
+
+[,yaml]
+----
+- dotnet/restore:
+    with:
+      project: src/MyApp.sln
+- dotnet/test:
+    with:
+      project: src/MyApp.sln
+      filter: Category!=Integration
+      hang-timeout: 9m
+- store_test_results:
+    path: test-results
+----
+
+The `hang-timeout` argument fails a test that runs longer than nine minutes and writes a hang dump, rather than letting the step time out with no output.
+
+[#commands]
+== Commands
+
+[#default-command]
+=== Default command
+
+Call the default command as `dotnet` (or your chosen alias). It installs SDKs and runtimes, puts `dotnet` on `PATH`, authenticates a NuGet source, and restores the NuGet package cache.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `dotnet-version`
+| String
+| None
+| SDK versions to install, separated by commas or newlines. Refer to <<version-syntax>>. With no value, the function installs what `global.json` asks for. With no `global.json` either, it uses the `dotnet` already on `PATH`, or installs the newest LTS SDK.
+
+| `dotnet-quality`
+| String
+| None
+| Build quality: `ga`, `preview`, or `daily`. Ignored for an exact version.
+
+| `dotnet-channel`
+| String
+| None
+| Channel to use with `dotnet-version: latest`: `LTS`, `STS`, `A.B`, or `A.B.Cxx`.
+
+| `global-json-file`
+| String
+| None
+| The `global.json` file to install the SDK for. With no value, the function finds one in the working directory or a parent, as `dotnet` does.
+
+| `runtime-version`
+| String
+| None
+| Runtime versions to install alongside the SDKs, separated by commas or newlines, in the same forms except `A.B.Cxx`. Each installs the ASP.NET Core Runtime, which includes the .NET Runtime. On Windows, each also installs the Windows Desktop Runtime.
+
+| `architecture`
+| String
+| The machine's architecture
+| Architecture to install: `x64`, `x86`, `arm64`, or `arm`.
+
+| `check-latest`
+| Boolean
+| `true`
+| Resolve versions online and install the newest match. Set to `false` to reuse a matching SDK or runtime that is already installed, without network access. The function also reads this setting from `$DOTNET_CHECK_LATEST`.
+
+| `workloads`
+| String
+| None
+| Workloads to install, separated by commas or newlines, for example `wasm-tools`.
+
+| `install-dir`
+| String
+| Refer to <<where-dotnet-is-installed>>
+| Directory to install .NET into. The function also reads this setting from `$DOTNET_INSTALL_DIR`.
+
+| `cache`
+| Boolean
+| `true`
+| Use the job cache. Set to `false` to turn off every cache.
+
+| `nuget-cache`
+| Boolean
+| `true`
+| Restore the NuGet global packages folder when the step runs, and save it at the end of the job.
+
+| `sdk-cache`
+| Boolean
+| `true`
+| Keep downloaded SDK and runtime archives in the job cache.
+
+| `cache-dependency-path`
+| String
+| None
+| Files whose contents key the NuGet cache, as globs relative to the working directory, separated by commas or newlines. Refer to <<nuget-caching>> for the default files.
+
+| `source-url`
+| String
+| None
+| NuGet source to authenticate, using the token in the `token-env` variable. This source also becomes the default push source.
+
+| `token-env`
+| String
+| `NUGET_AUTH_TOKEN`
+| Name of the environment variable that holds the token for `source-url`.
+
+| `owner`
+| String
+| `$CIRCLE_PROJECT_USERNAME`
+| User name for the source.
+
+| `config-file`
+| String
+| `nuget.config` in the working directory
+| Existing NuGet configuration file whose sources matching `source-url` get the credentials. If no source matches, the function adds one.
+|===
+--
+
+[#restore]
+=== restore
+
+Call this command as `dotnet/restore`. It runs `dotnet restore`, then `dotnet tool restore` when the project has a tool manifest.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `project`
+| String
+| None
+| Solution, project, or directory to restore. With no value, `dotnet` finds one in the working directory.
+
+| `locked-mode`
+| Boolean
+| `true`
+| Pass `--locked-mode` when a `packages.lock.json` exists, so a restore that would change a lock file fails.
+
+| `tool-restore`
+| Boolean
+| `true`
+| Also run `dotnet tool restore` when a `.config/dotnet-tools.json` exists.
+
+| `extra-args`
+| String
+| None
+| Extra arguments for `dotnet restore`, split as a shell would but never evaluated.
+|===
+--
+
+[#test]
+=== test
+
+Call this command as `dotnet/test`. It runs `dotnet test`, writes JUnit XML for `store_test_results`, and splits test projects across parallel nodes.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `project`
+| String
+| None
+| Solution, project, or directory to test. With no value, `dotnet` finds one in the working directory.
+
+| `filter`
+| String
+| None
+| Filter expression for `dotnet test --filter`, for example `Category!=Integration`.
+
+| `results-dir`
+| String
+| `test-results`
+| Directory to write JUnit XML into, for a `store_test_results` step.
+
+| `split`
+| Boolean
+| `true`
+| With _parallelism_, run only this node's share of the test projects, split by timings.
+
+| `hang-timeout`
+| String
+| None
+| Fail a test that runs longer than this duration, for example `9m`, with a hang dump.
+
+| `extra-args`
+| String
+| None
+| Extra arguments for `dotnet test`, for example `-c Release --no-build`. The function splits them as a shell would but never evaluates them.
+|===
+--
+
+[#how-it-works]
+== How it works
+
+[#installing-dotnet]
+=== Installing .NET
+
+The function resolves versions against Microsoft's release metadata and checks every download against the SHA-512 checksum that Microsoft publishes. When Microsoft lists the newest release of a floating version before its download is available, the function installs the previous release.
+
+The function always installs the SDK that a `global.json` in the working directory or a parent asks for, alongside any `dotnet-version`. It applies the file's `rollForward` policy the way the SDK does.
+
+[#where-dotnet-is-installed]
+=== Where .NET is installed
+
+Everything the function installs shares one .NET installation, so `dotnet` sees every SDK and runtime.
+
+* *Linux and macOS:* `~/.dotnet`, which needs no root access. The function links `dotnet` into a directory already on `PATH`, so later steps run it in any shell.
+* *Windows:* next to the .NET in `C:\Program Files\dotnet` when that directory is writable, so cmd, PowerShell, and Bash steps all run it. Otherwise, `%LOCALAPPDATA%\Microsoft\dotnet`.
+
+On Linux and macOS, the function registers the installation in `/etc/dotnet/install_location_<arch>`, as root or with `sudo` that needs no password, so apps find it in any shell. Later Bash steps also get `DOTNET_ROOT`, and the global tools directory on `PATH`.
+
+When the installation holds a newer SDK than the one you asked for, `dotnet` uses the newest SDK unless a `global.json` says otherwise. The function prints a warning when this happens.
+
+[#nuget-caching]
+=== NuGet caching
+
+The function restores the NuGet global packages folder when it runs. It saves the folder at the end of the job, including a job that fails, is canceled, or times out. Later `dotnet restore`, `dotnet build`, and `dotnet test` steps download what is missing.
+
+The cache key is a hash of every `packages.lock.json` under the working directory. Without lock files, the key uses every project file, `Directory.Packages.props`, `Directory.Build.props`, `nuget.config`, and `global.json`. When the key changes, the restore starts from the newest cache saved in the same three-day window. Every three days the cache starts over, so it does not grow without limit.
+
+[#nuget-credentials]
+=== NuGet credentials
+
+The function writes the credentials for `source-url` to a separate file in the user's NuGet configuration directory, which NuGet merges with the rest. It does not change the project's or the user's `NuGet.Config`.
+
+[#test-results-and-splitting]
+=== Test results and splitting
+
+The `test` command converts the TRX files that `dotnet test` writes into JUnit XML, so test projects need no extra logger package. xUnit, NUnit, and MSTest all work. With _parallelism_, the command splits test projects across nodes using the timings of earlier runs.
+
+When `global.json` selects Microsoft.Testing.Platform as the test runner, the command passes that platform's options instead. For `hang-timeout`, the test project needs the `Microsoft.Testing.Extensions.HangDump` package.
+
+[#version-syntax]
+== Version syntax
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| `dotnet-version` | Installs
+
+| `10.0.402`, `10.0.100-rc.2.25502.107`
+| Exactly that SDK
+
+| `10.0`, `10.0.x`
+| The newest SDK of 10.0, or a preview if 10.0 has no release
+
+| `10`, `10.x`
+| The newest SDK of the newest 10 channel
+
+| `10.0.1xx`
+| The newest SDK in that feature band
+
+| `latest`
+| The newest released SDK, narrowed by `dotnet-channel`
+|===
+--
+
+[#platform-support]
+== Platform support
+
+The `setup-dotnet` function runs on Docker and machine executors, with or without .NET already installed.
+
+* *Linux:* `x64`, `arm64`, and `arm`, including musl distributions such as Alpine.
+* *macOS:* `arm64` and `x64`.
+* *Windows:* `x64`, `arm64`, and `x86`.
+
+NOTE: On Alpine, install the libraries that .NET needs before the `setup-dotnet` step: `icu-libs`, `krb5-libs`, `libgcc`, `libintl`, `libssl3`, `libstdc++`, and `zlib`.
+
+[#see-also]
+== See also
+
+* Refer to xref:use:functions-intro.adoc[Functions Overview] for a starting point on using functions.
+* Refer to xref:use:functions-concepts.adoc[Functions Concepts] for how commands, arguments, versions, and validation work.
+* Refer to xref:use:functions-catalog.adoc[Functions Catalog] for the other functions CircleCI publishes.

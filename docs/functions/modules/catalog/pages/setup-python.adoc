@@ -1,0 +1,366 @@
+= setup-python
+:page-badge: Beta
+:page-platform: Cloud
+:page-description: Install Python and pip for every later step in the job, then install and cache your project's dependencies.
+:experimental:
+
+The `setup-python` function installs Python and puts `python` and `pip` on `PATH` for every later step in the job. Its `install-packages` command installs your project's dependencies with the right package manager and caches what it downloads.
+
+* Installs any CPython release by version spec, or the version your `.python-version`, `.tool-versions`, `pyproject.toml`, or `Pipfile` declares.
+* Makes `python` and `pip` available to later steps in any shell, with nothing to source or export.
+* Detects pip, Pipenv, Poetry, or `uv` from your project files and runs its install command.
+* Caches the installed Python, the virtual environment, and the package download cache.
+* Runs on Linux, macOS, and Windows, including Alpine.
+
+[#quickstart]
+== Quickstart
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  python: github.com/circleci-functions/setup-python@v0.5.0
+
+jobs:
+  test:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - python:
+          with:
+            python-version: "3.13"
+      - python/install-packages
+      - run: pytest
+
+workflows:
+  main:
+    jobs:
+      - test
+----
+
+The `python` step installs the newest stable Python 3.13 release. The `python/install-packages` step detects the package manager from the files in your project, restores its caches, installs your dependencies, and saves the caches again.
+
+To add the `functions:` entry at the latest version, run `circleci function add setup-python --as python`. To list published versions and arguments, run `circleci function get setup-python`.
+
+[#usage-examples]
+== Usage examples
+
+[#read-the-version-from-a-file]
+=== Read the version from a file
+
+[,yaml]
+----
+- python:
+    with:
+      python-version-file: pyproject.toml
+----
+
+The function reads `project.requires-python`, then `tool.poetry.dependencies.python`, and installs the newest release in that range. With no version arguments, the function reads `.python-version` from the step's working directory.
+
+[#install-dependencies-in-a-subdirectory]
+=== Install dependencies in a subdirectory
+
+[,yaml]
+----
+- python
+- python/install-packages:
+    with:
+      app-dir: ./service
+      package-manager: poetry
+- run:
+    working_directory: ./service
+    command: poetry run pytest
+----
+
+The `app-dir` argument points `install-packages` at the project, and `package-manager` skips detection. If Poetry, Pipenv, or `uv` is not on `PATH`, the function installs it with pip first. It installs the version that `pyproject.toml` pins in `tool.poetry.requires-poetry` or `tool.uv.required-version`.
+
+[#pass-extra-arguments-to-the-install-command]
+=== Pass extra arguments to the install command
+
+[,yaml]
+----
+- python/install-packages:
+    with:
+      package-manager: uv
+      args: --all-extras
+----
+
+The function appends `args` to the package manager's install command, here `uv sync --all-extras`.
+
+[#force-a-fresh-dependency-cache]
+=== Force a fresh dependency cache
+
+[,yaml]
+----
+- python/install-packages:
+    with:
+      cache-version: v2
+----
+
+The `cache-version` argument is the first component of the cache key. Change it to start from an empty cache.
+
+[#commands]
+== Commands
+
+The `setup-python` function has two commands. Each argument below is a `with:` key.
+
+[#default-command]
+=== Default command
+
+Called as `<alias>` (for example, `python`). Installs Python and links `python`, `python3`, `pip`, and `pip3` onto `PATH`. A step with no arguments reads `.python-version`, then falls back to the Python already on `PATH`, and installs the newest stable release only when neither exists.
+
+[.table-scroll]
+--
+[cols="2,1,2,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `python-version`
+| String
+| (empty)
+| Python version spec to install. Refer to the <<version-syntax>> section. Takes precedence over `python-version-file`.
+
+| `python-version-file`
+| String
+| (empty)
+| File to read the version from: `.python-version`, `.tool-versions`, `pyproject.toml`, or `Pipfile`.
+
+| `allow-prereleases`
+| Boolean
+| `false`
+| Let a `major.minor` spec match pre-release versions when that version has no stable release yet.
+
+| `freethreaded`
+| Boolean
+| `false`
+| Install a free-threaded build.
+
+| `pip-version`
+| String
+| (empty)
+| Version of pip to install into the installed Python, for example `24.2`.
+
+| `bin-dir`
+| String
+| (empty)
+| Link `python` and `pip` into this directory instead of discovering one on `PATH`. The directory must be on `PATH` for later steps.
+
+| `cache`
+| Boolean
+| `true`
+| Restore the Python install from the job cache, and save it after a fresh download. Set to `false` to turn off caching.
+|===
+--
+
+[#install-packages]
+=== install-packages
+
+Called as `<alias>/install-packages` (for example, `python/install-packages`). Installs your project's dependencies with its package manager, restoring the virtual environment and package caches before the install and saving them afterwards.
+
+[.table-scroll]
+--
+[cols="2,1,2,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `app-dir`
+| String
+| `.`
+| Directory containing the Python project.
+
+| `package-manager`
+| String
+| `auto`
+| One of `auto`, `pip`, `pip-dist`, `pipenv`, `poetry`, or `uv`. With `auto`, the function detects the package manager from the files in `app-dir`.
+
+| `args`
+| String
+| (empty)
+| Extra arguments appended to the install command.
+
+| `pip-dependency-file`
+| String
+| `requirements.txt`
+| Dependency file for `pip` and `pip-dist`. The function also hashes this file for their cache key.
+
+| `path-args`
+| String
+| `.`
+| Path passed to `pip install -e` when `package-manager` is `pip-dist`.
+
+| `cache`
+| Boolean
+| `true`
+| Restore the caches before the install and save them afterwards. Set to `false` to turn off caching.
+
+| `venv-cache`
+| Boolean
+| `true`
+| Include the virtual environment in the cache. Has no effect for `pip` and `pip-dist`.
+
+| `pypi-cache`
+| Boolean
+| `true`
+| Include the package download cache in the cache.
+
+| `venv-path`
+| String
+| (detected)
+| Directory to cache in place of the detected virtual environment path.
+
+| `cache-version`
+| String
+| `v1`
+| First component of the cache key. Change it to force a cache miss.
+
+| `cache-key-override`
+| String
+| (empty)
+| Use this value as the cache key, in place of the computed one.
+
+| `include-branch-in-cache-key`
+| Boolean
+| `true`
+| Include `$CIRCLE_BRANCH` in the cache key.
+
+| `include-python-in-cache-key`
+| Boolean
+| `true`
+| Include the output of `python --version` in the cache key.
+|===
+--
+
+[#how-it-works]
+== How it works
+
+[#install-python]
+=== Install Python
+
+The function downloads a relocatable CPython build from the `python-build-standalone` project for the machine it runs on and checks it against its SHA-256 checksum. Each release of the function includes the list of available builds, so a partial version such as `3.13` resolves to the newest release in that list. To pick up newer Python releases, upgrade the function.
+
+With caching on, the function saves the unpacked install to the job cache under a key made of the Python version and platform. Later jobs restore it instead of downloading it again. Cache problems never fail the job.
+
+[#link-python-onto-path]
+=== Make Python available to later steps
+
+The function links `python`, `python3`, `pip`, and `pip3` into a directory that is already on `PATH`, so later steps run them by name in any shell. It uses the first of `~/.local/bin`, `~/bin`, and `/usr/local/bin` that is on `PATH` ahead of any existing Python and that it can write to. Otherwise, it links into the directory of the Python already on `PATH`. When the function replaces an existing binary, it keeps the original beside it as `<name>.pathlink-old`.
+
+Where `python` already resolves through `pyenv` shims, as on CircleCI machine, macOS, and `cimg/python` images, the function registers the install with `pyenv` and makes it the global version. If a `.python-version` file or `$PYENV_VERSION` selects a different Python, the step fails.
+
+NOTE: If the link directory needs root, the function links with `sudo -n`, and the step fails unless `sudo` runs without a password. To avoid this, put `~/.local/bin` on `PATH` ahead of that directory, or set `bin-dir`. The function checks this before it downloads anything.
+
+When the function links `python` into `~/.local/bin`, it configures pip to install for the user, so commands from `pip install` also land on `PATH`. In that case, pass `--no-user` to pip alongside `--target` or `--prefix`. Elsewhere, run pip-installed tools with `python -m`.
+
+[#install-and-cache-dependencies]
+=== Install and cache dependencies
+
+With `package-manager` set to `auto`, `install-packages` checks the files in `app-dir` in the following order and uses the first match:
+
+[.table-scroll]
+--
+[cols="2,1,2,2", options="header"]
+|===
+| Files | Package manager | Install command | Lock file for the cache key
+
+| `requirements.txt` and `setup.py`
+| `pip-dist`
+| `pip install -e <path-args>`
+| `pip-dependency-file`
+
+| `requirements.txt`
+| `pip`
+| `pip install -r <pip-dependency-file>`
+| `pip-dependency-file`
+
+| `Pipfile`
+| `pipenv`
+| `pipenv install`
+| `Pipfile.lock`
+
+| `uv.lock`
+| `uv`
+| `uv sync`
+| `uv.lock`
+
+| `pyproject.toml`
+| `poetry`
+| `poetry install --no-ansi`
+| `poetry.lock`
+|===
+--
+
+The cache key combines `cache-version`, the branch, the output of `python --version`, and a SHA-256 checksum of the lock file. A dependency change refreshes the cache on its own. When the lock file is missing, `install-packages` installs without caching. Cache problems never fail the job.
+
+[#version-syntax]
+== Version syntax
+
+The `python-version` argument accepts the following forms:
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| Spec | Installs
+
+| `3.13.1`, `3.15.0rc2`
+| That exact release
+
+| `3`, `3.x`, `3.13`, `3.13.x`
+| Newest matching stable release
+
+| `>=3.10 <3.14`, `^3.11`, `~3.12.1`, `3.11 \|\| 3.12`
+| Newest stable release in the range
+
+| `>=3.10,<3.14`, `~=3.11`, `==3.12.*`
+| Newest stable release in the range, written as in `requires-python`
+
+| `3.14-dev`
+| Newest release of 3.14, including pre-release versions
+
+| `3.13t`
+| Free-threaded build, the same as setting `freethreaded`
+|===
+--
+
+The `python-version-file` argument reads the following files:
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| File | Read from
+
+| `.python-version`
+| First line that is not a comment
+
+| `.tool-versions`
+| The `python` line
+
+| `pyproject.toml`
+| `project.requires-python`, then `tool.poetry.dependencies.python`
+
+| `Pipfile`
+| `requires.python_full_version`, then `requires.python_version`
+|===
+--
+
+[#platform-support]
+== Platform support
+
+The function runs on Linux, macOS, and Windows on amd64 and arm64, and on Linux on 32-bit Arm, ppc64le, and s390x. A version spec matches only releases with a build for the machine the job runs on.
+
+* *Alpine and other `musl` distributions*: The function installs `musl` builds on amd64 and arm64.
+* *Free-threaded builds*: Available from Python 3.13.12 and 3.14.3.
+* *Windows*: Later steps find `python`, `python3`, `pip`, and `pip3` in `cmd`, PowerShell, or Git Bash through small forwarding shims.
+* *Other interpreters*: PyPy and GraalPy are not supported.
+
+Dependency cache locations follow each tool's own default for the platform. For example, the pip cache is `~/.cache/pip` on Linux, `~/Library/Caches/pip` on macOS, and `%LocalAppData%\pip\Cache` on Windows.
+
+[#see-also]
+== See also
+
+* Refer to xref:use:functions-intro.adoc[Functions Overview] for a starting point on using functions.
+* Refer to xref:use:functions-concepts.adoc[Functions Concepts] for how commands, arguments, versions, and validation work.
+* Refer to xref:use:functions-catalog.adoc[Functions Catalog] for the other functions CircleCI publishes.

@@ -1,0 +1,215 @@
+= setup-github-cli
+:page-badge: Beta
+:page-platform: Cloud
+:page-description: Install the GitHub CLI (gh) in a CircleCI job and optionally authenticate it with a token for gh and git commands.
+:experimental:
+
+The `setup-github-cli` function installs the link:https://cli.github.com/[GitHub CLI] (`gh`) for the rest of your job. It can also authenticate the GitHub CLI with a personal access token and set it up as the credential helper for `git`.
+
+* Installs a pinned GitHub CLI release, or the latest release.
+* Checks the downloaded archive against the release checksum before installing.
+* Puts the GitHub CLI on `PATH` for every later step, in any shell.
+* Authenticates the GitHub CLI and `git` with a token from a context or project environment variable.
+* Supports GitHub Enterprise Server.
+
+[#quickstart]
+== Quickstart
+
+The following configuration installs the latest GitHub CLI release and prints its version:
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  gh: github.com/circleci-functions/setup-github-cli@v0.3.0
+
+jobs:
+  release:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - gh
+      - run: gh --version
+
+workflows:
+  main:
+    jobs:
+      - release
+----
+
+Later steps in the job find `gh` on `PATH`. To add the `functions:` entry from the command line, run `circleci function add setup-github-cli --as gh`.
+
+[#usage-examples]
+== Usage examples
+
+[#pin-the-github-cli-version]
+=== Pin the GitHub CLI version
+
+[,yaml]
+----
+      - gh:
+          with:
+            version: 2.62.0
+----
+
+Pin a version to get the same GitHub CLI release on every run.
+
+[#authenticate-with-a-token]
+=== Authenticate with a token
+
+Store a GitHub personal access token as `GITHUB_TOKEN` in a context or as a project environment variable. See xref:guides:security:contexts.adoc[Using Contexts] and xref:guides:security:set-environment-variable.adoc[Set an Environment Variable]. Then set `configure`:
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  gh: github.com/circleci-functions/setup-github-cli@v0.3.0
+
+jobs:
+  release:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - gh:
+          with:
+            configure: true
+      - run: gh pr list
+
+workflows:
+  main:
+    jobs:
+      - release:
+          context: github-token
+----
+
+Later steps can run `gh` commands, and `git` commands against GitHub use the same token. If the variable is unset or empty, the step fails before it installs anything.
+
+[#read-the-token-from-another-variable]
+=== Read the token from another variable
+
+[,yaml]
+----
+      - gh:
+          with:
+            configure: true
+            token: RELEASE_BOT_TOKEN
+----
+
+NOTE: The `token` argument takes the _name_ of an environment variable, not the token value. Never put a token directly in your configuration.
+
+[#authenticate-with-github-enterprise-server]
+=== Authenticate with GitHub Enterprise Server
+
+[,yaml]
+----
+      - gh:
+          with:
+            configure: true
+            hostname: github.example.com
+            token: GHE_TOKEN
+----
+
+For a hostname other than `github.com`, the function exports the token as `GH_ENTERPRISE_TOKEN` and sets `GH_HOST` to the hostname.
+
+[#arguments]
+== Arguments
+
+Call the function as `gh`, or whichever alias you chose in the `functions:` block.
+
+[.table-scroll]
+--
+[cols="2,1,2,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `version`
+| String
+| `latest`
+| GitHub CLI version to install: `latest` or a full release such as `2.62.0`.
+
+| `max-retries`
+| Integer
+| `5`
+| Number of retries when resolving the latest release.
+
+| `install-dir`
+| String
+| `~/.cache/setup-github-cli`
+| Base directory to install the GitHub CLI under.
+
+| `configure`
+| Boolean
+| `false`
+| After installing, authenticate the GitHub CLI with a token and set it up as the credential helper for `git`.
+
+| `token`
+| String
+| `GITHUB_TOKEN`
+| Name of the environment variable that holds the GitHub token. Used only with `configure`.
+
+| `hostname`
+| String
+| `github.com`
+| GitHub hostname to authenticate against. Used only with `configure`.
+|===
+--
+
+[#how-it-works]
+== How it works
+
+[#install-the-github-cli]
+=== Install the GitHub CLI
+
+The function downloads the GitHub CLI release archive for your platform from the `cli/cli` releases on GitHub. Before extracting it, the function checks the archive against the SHA-256 in the release checksums file and fails on a mismatch. It extracts the GitHub CLI into a directory for that version under `install-dir`. When that version is already in `install-dir`, the function skips the download. The function does not save or restore a CircleCI cache.
+
+[#add-the-github-cli-to-the-path]
+=== Add the GitHub CLI to the path
+
+The function links `gh` into a writable directory that is already on `PATH`, so every later step finds it without sourcing anything. It prefers `~/.local/bin`, then `~/bin`, then `/usr/local/bin`. If the chosen directory is not writable, it links through `sudo -n` where `sudo` needs no password.
+
+If a different GitHub CLI version is already on `PATH`, the function makes sure the requested version resolves first. If it cannot, the step fails rather than leave later steps running another version.
+
+[#authenticate-the-github-cli]
+=== Authenticate the GitHub CLI
+
+With `configure`, the function reads the token from the variable named by `token` and exports it to `$BASH_ENV` for later steps. It then runs `gh auth setup-git` for the hostname and turns off interactive prompts in the GitHub CLI.
+
+The exported token is plain text in `$BASH_ENV`, so any later step in the job can read it.
+
+[#version-syntax]
+== Version syntax
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| Form | Example
+
+| Latest release
+| `latest`
+
+| Exact release
+| `2.62.0`
+
+| Exact release with a leading `v`
+| `v2.62.0`
+|===
+--
+
+The function rejects partial versions such as `2.62` and prerelease versions.
+
+[#platform-support]
+== Platform support
+
+The function runs on Linux and macOS, on amd64 and arm64. On any other platform, the step fails with an error. On macOS arm64, `version` must be 2.25.0 or later.
+
+[#see-also]
+== See also
+
+* Refer to xref:use:functions-intro.adoc[Functions Overview] for a starting point on using functions.
+* Refer to xref:use:functions-concepts.adoc[Functions Concepts] for how commands, arguments, versions, and validation work.
+* Refer to xref:use:functions-catalog.adoc[Functions Catalog] for the other functions CircleCI publishes.

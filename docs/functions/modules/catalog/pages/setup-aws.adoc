@@ -1,0 +1,334 @@
+= setup-aws
+:page-badge: Beta
+:page-platform: Cloud
+:page-description: Install the AWS CLI v2 in a CircleCI job and configure AWS credentials with OIDC role assumption or static access keys.
+:experimental:
+
+The `setup-aws` function installs the AWS CLI v2 for the rest of your job. It can also configure AWS credentials in `~/.aws/credentials` and `~/.aws/config`, so later steps can call AWS without further setup.
+
+* Installs a pinned AWS CLI v2 version, or the latest release.
+* Verifies the official AWS installer signature before it runs.
+* Assumes an IAM role with a CircleCI OIDC token, so you store no long-lived AWS keys.
+* Configures static access keys from a context or project environment variables.
+* Turns off the AWS CLI output pager so commands never wait for input.
+
+[#quickstart]
+== Quickstart
+
+The following configuration installs the latest AWS CLI v2 and prints its version:
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  aws: github.com/circleci-functions/setup-aws@v0.4.0
+
+jobs:
+  deploy:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - aws
+      - run: aws --version
+
+workflows:
+  main:
+    jobs:
+      - deploy
+----
+
+Later steps in the job find `aws` on `PATH`. To add the `functions:` entry from the command line, run `circleci function add setup-aws --as aws`.
+
+[#usage-examples]
+== Usage examples
+
+[#assume-a-role-with-oidc]
+=== Assume a role with OIDC
+
+Assuming an IAM role with a CircleCI OIDC token is the recommended way to authenticate. Your job receives temporary credentials and you store no AWS keys in CircleCI.
+
+. In AWS, create an OpenID Connect provider in IAM. Use `\https://oidc.circleci.com/org/<organization-id>` as the provider URL and your CircleCI organization ID as the audience. Find your organization ID by selecting **Org** in the CircleCI web app sidebar.
+. Create an IAM role with a trust policy that lets that provider call `sts:AssumeRoleWithWebIdentity`. Replace `<account-id>` and `<organization-id>` with your own values:
++
+[,json]
+----
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::<account-id>:oidc-provider/oidc.circleci.com/org/<organization-id>"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.circleci.com/org/<organization-id>:aud": "<organization-id>"
+        }
+      }
+    }
+  ]
+}
+----
+. Attach only the permissions your job needs to the role.
+. In your configuration, set `configure-credentials` and pass the role ARN and region:
++
+[,yaml]
+----
+version: 2.1
+
+functions:
+  aws: github.com/circleci-functions/setup-aws@v0.4.0
+
+jobs:
+  deploy:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - aws:
+          with:
+            configure-credentials: true
+            role-arn: arn:aws:iam::<account-id>:role/<role-name>
+            region: us-east-1
+      - run: aws sts get-caller-identity
+
+workflows:
+  main:
+    jobs:
+      - deploy
+----
+
+The function mints an OIDC token with your organization ID as the audience and exchanges it for temporary credentials. It writes them to the profile and exports `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` for later steps. To restrict the role to specific projects or branches, see xref:guides:permissions-authentication:openid-connect-tokens.adoc#advanced-usage[OpenID Connect Tokens].
+
+[#use-static-access-keys]
+=== Use static access keys
+
+Store `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_DEFAULT_REGION` in a context or as project environment variables. See xref:guides:security:contexts.adoc[Using Contexts] and xref:guides:security:set-environment-variable.adoc[Set an Environment Variable]. The function reads the values from the environment, so your configuration holds no secrets:
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  aws: github.com/circleci-functions/setup-aws@v0.4.0
+
+jobs:
+  deploy:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - aws:
+          with:
+            configure-credentials: true
+            region: us-east-1
+      - run: aws s3 ls
+
+workflows:
+  main:
+    jobs:
+      - deploy:
+          context: aws-credentials
+----
+
+If either key is empty, the step fails before it installs anything.
+
+[#pin-the-aws-cli-version]
+=== Pin the AWS CLI version
+
+[,yaml]
+----
+      - aws:
+          with:
+            version: 2.13.0
+----
+
+The function skips the install when that exact version is already on `PATH`. Set `override-installed: true` to reinstall it anyway.
+
+[#assume-a-role-from-a-source-profile]
+=== Assume a role from a source profile
+
+Set `source-profile` to have the AWS CLI assume the role itself on each call, using the base credentials in another profile:
+
+[,yaml]
+----
+      - aws:
+          with:
+            configure-credentials: true
+      - aws:
+          with:
+            configure-credentials: true
+            profile-name: deploy
+            role-arn: arn:aws:iam::<account-id>:role/<role-name>
+            source-profile: default
+      - run: aws s3 ls --profile deploy
+----
+
+The first step writes static keys from the environment to the `default` profile. The second step writes `role_arn`, `source_profile`, and the region to the `deploy` profile. The source profile must already hold credentials.
+
+[#arguments]
+== Arguments
+
+Call the function as `aws`, or whichever alias you chose in the `functions:` block. Credential arguments apply only when `configure-credentials` is `true`. The function warns about any credential argument you pass without it.
+
+[.table-scroll]
+--
+[cols="2,1,2,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `version`
+| String
+| `latest`
+| AWS CLI version to install: `latest` or a full version such as `2.13.0`.
+
+| `override-installed`
+| Boolean
+| `false`
+| Reinstall the AWS CLI even when the requested version is already installed.
+
+| `enable-aws-pager`
+| Boolean
+| `false`
+| Leave the AWS CLI output pager on instead of turning it off for later steps.
+
+| `install-dir`
+| String
+| `/usr/local/aws-cli`
+| Installation directory. Used by the Linux installer only.
+
+| `binary-dir`
+| String
+| `/usr/local/bin`
+| Directory for the `aws` link. Used by the Linux installer only.
+
+| `use-brew`
+| Boolean
+| `false`
+| Install with Homebrew on macOS. Homebrew installs its own current version and ignores `version`.
+
+| `configure-credentials`
+| Boolean
+| `false`
+| Configure AWS credentials after installing the CLI.
+
+| `profile-name`
+| String
+| `default`
+| AWS profile to configure.
+
+| `aws-access-key-id`
+| String
+| Value of `AWS_ACCESS_KEY_ID`
+| AWS access key ID for static credentials.
+
+| `aws-secret-access-key`
+| String
+| Value of `AWS_SECRET_ACCESS_KEY`
+| AWS secret access key for static credentials.
+
+| `region`
+| String
+| Value of `AWS_DEFAULT_REGION`
+| AWS region to configure. When empty, the function writes no region.
+
+| `configure-default-region`
+| Boolean
+| `true`
+| Set the region as the default region in `~/.aws/config`.
+
+| `configure-profile-region`
+| Boolean
+| `true`
+| Set the region for the profile named by `profile-name`.
+
+| `role-arn`
+| String
+| None
+| ARN of the role to assume with OIDC, or to write to the profile when you set `source-profile`.
+
+| `role-session-name`
+| String
+| Value of `CIRCLE_JOB`
+| Session name for the assumed role. The function replaces characters that AWS does not allow with hyphens and cuts the name to 64 characters.
+
+| `session-duration`
+| Integer
+| `3600`
+| Duration of the assumed-role session, in seconds.
+
+| `set-aws-env-vars`
+| Boolean
+| `true`
+| Export assumed-role credentials to `$BASH_ENV` for later steps.
+
+| `source-profile`
+| String
+| None
+| Profile that holds the base credentials for `role-arn`. When set, the function writes `role_arn`, `source_profile`, and the region to the profile instead of assuming the role with OIDC.
+|===
+--
+
+[#how-it-works]
+== How it works
+
+[#install-the-cli]
+=== Install the CLI
+
+On Linux, the function downloads the official AWS CLI v2 installer from AWS and checks its PGP signature against the AWS CLI team key. It then installs the CLI into `install-dir` and links `aws` into `binary-dir`. If `binary-dir` is not on `PATH`, the function adds it for later steps.
+
+On macOS, the function downloads the official package and checks that Amazon signed it before running the installer. With `use-brew`, it runs `brew install awscli` instead.
+
+On Alpine Linux, the official installer cannot run, so the function runs `apk add aws-cli` and installs the version in the package repository. The `version`, `install-dir`, `binary-dir`, and `use-brew` arguments do not apply on Alpine.
+
+The function skips the install when the requested version is already on `PATH`. With `latest`, any AWS CLI v2 counts. The function replaces an AWS CLI v1 with v2. The function does not save or restore a CircleCI cache.
+
+[#configure-credentials]
+=== Configure credentials
+
+The function writes access keys and session tokens to `~/.aws/credentials`, or to `$AWS_SHARED_CREDENTIALS_FILE` when set, with mode 0600. It sets the region through `aws configure set`.
+
+Assumed-role credentials are also exported to `$BASH_ENV` as plain text. CircleCI masks project and context secrets in job output, but not values created during the job. If later steps only need `~/.aws/credentials`, set `set-aws-env-vars: false`. The function writes static keys to `~/.aws/credentials` only and does not export them.
+
+[#turn-off-the-pager]
+=== Turn off the pager
+
+Unless `enable-aws-pager` is `true` or `AWS_PAGER` is already set, the function adds `export AWS_PAGER=""` to `$BASH_ENV` once per job. AWS CLI commands in later steps then print their output without waiting for input.
+
+[#version-syntax]
+== Version syntax
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| Form | Example
+
+| Latest AWS CLI v2 release
+| `latest`
+
+| Exact version
+| `2.13.0`
+|===
+--
+
+The function rejects partial versions such as `2.13` before it installs anything.
+
+[#platform-support]
+== Platform support
+
+The function runs on Linux (amd64 and arm64), Alpine Linux, and macOS. It does not run on Windows.
+
+On Linux, the installer runs as the step user when that user can write to `install-dir` and `binary-dir`, and through `sudo -n` otherwise. When the step has neither root nor `sudo` without a password, the default directories fall back to `~/.local/aws-cli` and `~/.local/bin`. If you set your own directories, the step fails instead.
+
+On macOS, the package installer needs root or `sudo` without a password. Installing with `use-brew` does not.
+
+[#see-also]
+== See also
+
+* Refer to xref:use:functions-intro.adoc[Functions Overview] for a starting point on using functions.
+* Refer to xref:use:functions-concepts.adoc[Functions Concepts] for how commands, arguments, versions, and validation work.
+* Refer to xref:use:functions-catalog.adoc[Functions Catalog] for the other functions CircleCI publishes.

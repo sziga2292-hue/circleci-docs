@@ -1,0 +1,307 @@
+= setup-node
+:page-badge: Beta
+:page-platform: Cloud
+:page-description: Install Node.js, put node, npm, and npx on PATH, and install dependencies with a cached package manager.
+:experimental:
+
+The `setup-node` function installs Node.js and puts `node`, `npm`, and `npx` on `PATH` for every later step in the job. Its `install-packages` command installs your dependencies with the right package manager and caches what it downloads.
+
+* Installs any Node.js release by exact version, range, or LTS line, or reads the version from a file such as `.nvmrc` or `package.json`.
+* Makes `node`, `npm`, and `npx` available to later steps in any shell, with nothing to source or export.
+* Detects `npm`, `yarn`, `pnpm`, or `bun` from your lockfile and runs a frozen install.
+* Caches the Node.js install and the package manager cache by default.
+* Downloads from nodejs.org or from a mirror you choose.
+
+[#quickstart]
+== Quickstart
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  node: github.com/circleci-functions/setup-node@v0.4.0
+
+jobs:
+  test:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - node:
+          with:
+            node-version: "22"
+      - node/install-packages
+      - run: npm test
+
+workflows:
+  main:
+    jobs:
+      - test
+----
+
+The `node` step installs the newest Node.js 22 release. The `node/install-packages` step installs your dependencies with the package manager your lockfile names and caches its downloads.
+
+To add the `functions:` entry at the latest version, run `circleci function add setup-node --as node`. To list published versions and arguments, run `circleci function get setup-node`.
+
+[#usage-examples]
+== Usage examples
+
+[#read-the-version-from-a-file]
+=== Read the version from a file
+
+[,yaml]
+----
+- node:
+    with:
+      node-version-file: .nvmrc
+----
+
+The function reads the version spec from the file. With neither `node-version` nor `node-version-file` set, the function reads `.nvmrc` and then `.node-version` from the step's working directory. If neither file exists, it installs the newest LTS release.
+
+[#install-dependencies-in-a-subdirectory]
+=== Install dependencies in a subdirectory
+
+[,yaml]
+----
+- node
+- node/install-packages:
+    with:
+      app-dir: ./frontend
+----
+
+The `app-dir` argument points at the directory that holds `package.json` and the lockfile.
+
+[#use-a-specific-package-manager]
+=== Use a specific package manager
+
+[,yaml]
+----
+- node:
+    with:
+      node-version: "24"
+- run: npm install --global pnpm@10
+- node/install-packages:
+    with:
+      package-manager: pnpm
+----
+
+The `install-packages` command runs the package manager on `PATH`. When `package.json` pins a missing `pnpm`, `yarn`, or `bun` in its `packageManager` field, the command installs that version first. For example, `"packageManager": "pnpm@10.12.1"` installs `pnpm` 10.12.1. Without a pin, install the package manager in an earlier step, as shown.
+
+[#replace-the-install-command]
+=== Replace the install command
+
+[,yaml]
+----
+- node/install-packages:
+    with:
+      override-command: npm install --legacy-peer-deps
+----
+
+The `override-command` argument replaces the default frozen install. The package manager cache is still restored and saved around it.
+
+[#download-from-a-mirror]
+=== Download from a mirror
+
+[,yaml]
+----
+- node:
+    with:
+      node-version: "22"
+      mirror: https://mirror.example.com/node
+----
+
+The mirror must be laid out like `https://nodejs.org/dist`. The function also reads the mirror and token from the `NODE_MIRROR` and `NODE_MIRROR_TOKEN` environment variables, so you can keep both in a context or in project environment variables.
+
+[#commands]
+== Commands
+
+[#default-command]
+=== Default command
+
+Called as `<alias>` (for example, `node`). Installs Node.js and links `node`, `npm`, `npx`, and `corepack` (on releases that ship it) onto `PATH`. A step with no arguments installs the version from `.nvmrc` or `.node-version`, or the newest LTS release.
+
+[.table-scroll]
+--
+[cols="2,1,2,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `node-version`
+| String
+| (`.nvmrc`, `.node-version`, then `lts/*`)
+| Node.js version spec to install. Refer to the <<version-syntax>> section. Takes precedence over `node-version-file` when both are set.
+
+| `node-version-file`
+| String
+| (empty)
+| File to read the version spec from: `.nvmrc`, `.node-version`, `.tool-versions`, `mise.toml`, or `package.json`.
+
+| `mirror`
+| String
+| `https://nodejs.org/dist`
+| Base URL of a server laid out like `https://nodejs.org/dist` to download Node.js from. Also read from the `NODE_MIRROR` environment variable.
+
+| `mirror-token`
+| String
+| (empty)
+| Value sent verbatim as the `Authorization` header to `mirror`. Never sent to nodejs.org. Also read from the `NODE_MIRROR_TOKEN` environment variable.
+
+| `cache`
+| Boolean
+| `true`
+| Restore the Node.js install from the job cache, and save it after a fresh download. Set to `false` to turn off caching.
+|===
+--
+
+[#install-packages]
+=== install-packages
+
+Called as `<alias>/install-packages` (for example, `node/install-packages`). Installs the project's dependencies with its package manager and caches what the package manager downloads.
+
+[.table-scroll]
+--
+[cols="2,1,2,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `app-dir`
+| String
+| `.`
+| Directory containing `package.json` and the lockfile.
+
+| `package-manager`
+| String
+| (detected)
+| Package manager to use: `npm`, `yarn`, `pnpm`, or `bun`. Detected from the lockfile when not set.
+
+| `override-command`
+| String
+| (empty)
+| Command to run instead of the default frozen install, for example `npm install --legacy-peer-deps`.
+
+| `cache`
+| Boolean
+| `true`
+| Restore the package manager cache before installing and save it afterwards. Set to `false` to turn off caching.
+|===
+--
+
+[#how-it-works]
+== How it works
+
+[#install-node-js]
+=== Install Node.js
+
+The default command downloads the official Node.js build for the machine it runs on and checks it against the release's `SHASUMS256.txt`. With caching on, the function saves the unpacked install to the job cache under a key made of the operating system, architecture, and Node.js version. Later jobs restore it instead of downloading it again.
+
+The function links `node`, `npm`, `npx`, and `corepack` into a directory already on `PATH`, so later steps run them by name in any shell. It uses the first of `~/.local/bin`, `~/bin`, or `/usr/local/bin` that is on `PATH` ahead of any existing `node` and writable without `sudo`. A preinstalled Node.js is then shadowed, not changed. Otherwise, the function takes over the directory of the preinstalled `node`. It replaces `node`, `npm`, `npx`, and `corepack` there with links to the new install, and keeps each original beside it as `<name>.pathlink-old`. If that directory is owned by root, the function uses `sudo -n`, which fails the step instead of waiting for a password.
+
+The function also points the npm global prefix at the directory it linked `node` into, so executables from `npm install --global` land on `PATH`. A prefix you set in `~/.npmrc` or `$npm_config_prefix` takes precedence.
+
+[#install-dependencies]
+=== Install dependencies
+
+The `install-packages` command detects the package manager from the lockfile in `app-dir`, checking in this order:
+
+[.table-scroll]
+--
+[cols="2,1", options="header"]
+|===
+| Lockfile | Package manager
+
+| `bun.lock` or `bun.lockb`
+| `bun`
+
+| `pnpm-lock.yaml`
+| `pnpm`
+
+| `yarn.lock`
+| `yarn`
+
+| `package-lock.json` or `npm-shrinkwrap.json`
+| `npm`
+|===
+--
+
+Each package manager runs a frozen install that fails if the lockfile is out of sync. npm runs `npm ci --no-audit --no-fund`. The `yarn`, `pnpm`, and `bun` package managers run `<pm> install --frozen-lockfile`. To act on vulnerabilities, run `npm audit` as its own step.
+
+[#cache-packages]
+=== Cache packages
+
+The `install-packages` command restores the package manager cache directory before installing and saves it afterwards. The cache key includes the operating system, architecture, package manager and its version, the cache directory, and a checksum of the lockfile, so a changed lockfile refreshes the cache. When no cache exists for the current lockfile, the command restores the most recent cache with everything else the same, so only the packages that changed are downloaded.
+
+The cache directory is the one the package manager reports. Yarn 2 and 3 keep their cache in the project's `.yarn/cache` unless `enableGlobalCache` is set. Cache problems never fail the job. If the cache directory or lockfile cannot be read, the command skips caching with a warning and still runs the install.
+
+[#version-syntax]
+== Version syntax
+
+The `node-version` argument accepts the following forms:
+
+[.table-scroll]
+--
+[cols="2,3", options="header"]
+|===
+| Spec | Installs
+
+| `22.11.0`, `v22.11.0`
+| That exact release
+
+| `22`, `22.x`, `22.11`
+| The newest matching release
+
+| `>=20 <23`, `^20`, `~20.1`, `20 \|\| 22`
+| The newest release in the range
+
+| `lts/*`
+| The newest LTS release
+
+| `lts/jod`
+| The newest release of that LTS line
+
+| `lts/-1`
+| The newest release of the LTS line before the newest
+
+| `latest`, `current`, `node`
+| The newest release
+|===
+--
+
+The `node-version-file` argument reads the following files:
+
+[.table-scroll]
+--
+[cols="2,3", options="header"]
+|===
+| File | Read from
+
+| `.nvmrc`, `.node-version`
+| The version on its own line
+
+| `.tool-versions`
+| The `nodejs` or `node` line
+
+| `mise.toml`
+| `tools.node`
+
+| `package.json`
+| `volta.node`, then the `node` entry in `devEngines.runtime`, then `engines.node`, then the file `volta.extends` names
+|===
+--
+
+[#platform-support]
+== Platform support
+
+The function runs on Linux, macOS, and Windows, on amd64 and arm64 architectures. On Linux, it also runs on 32-bit Arm, ppc64le, and s390x. It runs wherever Node.js publishes an official build for the requested release. A version spec only matches releases with a build for the machine it runs on.
+
+NOTE: Alpine and other `musl` distributions are not supported, because the official Node.js Linux builds link against `glibc`. Use a glibc-based image such as `cimg/base`.
+
+* *Older `glibc` distributions*: Recent Node.js releases require a minimum `glibc` version. The function checks that the installed `node` runs, and fails the step with the error from `node` if it does not.
+* *Windows*: The function installs `node`, `npm`, `npx`, and `corepack` shims that work from `cmd`, PowerShell, and Git Bash.
+
+[#see-also]
+== See also
+
+* Refer to xref:use:functions-intro.adoc[Functions Overview] for a starting point on using functions.
+* Refer to xref:use:functions-concepts.adoc[Functions Concepts] for how commands, arguments, versions, and validation work.
+* Refer to xref:use:functions-catalog.adoc[Functions Catalog] for the other functions CircleCI publishes.

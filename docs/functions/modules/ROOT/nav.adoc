@@ -1,0 +1,16 @@
+* Use functions
+** xref:use:functions-intro.adoc[Introduction to using functions]
+** xref:use:functions-concepts.adoc[Functions concepts]
+** xref:use:functions-faq.adoc[FAQ]
+* Functions catalog
+** xref:use:functions-catalog.adoc[Browse functions]
+** xref:catalog:setup-aws.adoc[setup-aws]
+** xref:catalog:setup-browser-tools.adoc[setup-browser-tools]
+** xref:catalog:setup-docker.adoc[setup-docker]
+** xref:catalog:setup-dotnet.adoc[setup-dotnet]
+** xref:catalog:setup-github-cli.adoc[setup-github-cli]
+** xref:catalog:setup-go.adoc[setup-go]
+** xref:catalog:setup-java.adoc[setup-java]
+** xref:catalog:setup-node.adoc[setup-node]
+** xref:catalog:setup-python.adoc[setup-python]
+** xref:catalog:setup-ruby.adoc[setup-ruby]

@@ -1,0 +1,375 @@
+= setup-java
+:page-badge: Beta
+:page-platform: Cloud
+:page-description: Install a Java Development Kit in a CircleCI job, and cache the dependencies that Maven or Gradle downloads.
+:experimental:
+
+The `setup-java` function installs a Java Development Kit (JDK) and makes it the JDK that the rest of the job uses. It puts `java`, `javac`, and the other JDK tools on `PATH`, and points `JAVA_HOME` at the install.
+
+* Seven distributions, including Eclipse Temurin, Azul Zulu, Amazon Corretto, and Oracle GraalVM.
+* Versions from a spec, a range, or a version file such as `.java-version`, `.tool-versions`, or `.sdkmanrc`.
+* Several JDKs in one job, for Maven and Gradle toolchains.
+* A cached JDK install, and an optional cache for Maven or Gradle dependencies.
+
+[#quickstart]
+== Quickstart
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  java: github.com/circleci-functions/setup-java@v0.3.0
+
+jobs:
+  build:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - java:
+          with:
+            distribution: temurin
+            java-version: "21"
+            cache-dependencies: maven
+      - run: ./mvnw verify
+----
+
+The `java` step installs the newest Temurin 21 release and restores the Maven dependency cache. Later steps run `java` and `./mvnw` by name, without sourcing anything.
+
+[#usage-examples]
+== Usage examples
+
+[#read-the-version-from-a-file]
+=== Read the version from a file
+
+[,yaml]
+----
+- java:
+    with:
+      distribution: zulu
+      java-version-file: .java-version
+----
+
+The function reads the version from `.java-version`, `.tool-versions`, or `.sdkmanrc`. When the file names a distribution, it must match `distribution`.
+
+[#install-several-jdks-for-toolchains]
+=== Install several JDKs for toolchains
+
+[,yaml]
+----
+- java:
+    with:
+      distribution: temurin
+      java-version: "17,21"
+----
+
+The function installs each version and makes the last one the default. Each JDK gets a `JAVA_HOME_<major>_<ARCH>` variable, for example `JAVA_HOME_17_X64`, which Maven and Gradle toolchains use to find it. To install a JDK for toolchains only, set `make-default-jdk: false`.
+
+[#install-a-local-jdk-archive]
+=== Install a local JDK archive
+
+[,yaml]
+----
+- java:
+    with:
+      distribution: jdkfile
+      jdk-file: ./vendor/jdk-21.0.5.tar.gz
+      java-version: "21.0.5"
+----
+
+The archive can be a `.tar.gz`, `.tgz`, or `.zip` file. Use `java-version` to name the version it holds. The function checks that the JDK reports the same major version.
+
+[#cache-dependencies-on-an-image-with-java]
+=== Cache dependencies on an image with Java
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  java: github.com/circleci-functions/setup-java@v0.3.0
+
+jobs:
+  build:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - checkout
+      - java/cache-dependencies:
+          with:
+            build-tool: gradle
+      - run: ./gradlew build
+----
+
+On an image that already has Java, the `cache-dependencies` command caches Maven or Gradle downloads without installing a JDK.
+
+[#commands]
+== Commands
+
+[#default-command]
+=== Default command
+
+Call the default command as `java` (or your chosen alias). It installs one or more JDKs, puts the JDK tools on `PATH`, and sets `JAVA_HOME`. Set `distribution`, and set `java-version`, `java-version-file`, or both.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `distribution`
+| String
+| Required
+| Distribution to install: `temurin`, `zulu`, `corretto`, `microsoft`, `oracle-openjdk`, `graalvm`, or `jdkfile` to install the archive in `jdk-file`. Refer to <<distributions>>.
+
+| `java-version`
+| String
+| None
+| Version to install. Refer to <<version-syntax>>. Separate several versions with commas to install each. The last one becomes the default.
+
+| `java-version-file`
+| String
+| None
+| File to read the version from: `.java-version`, `.tool-versions`, or `.sdkmanrc`. When you also set `java-version`, the two must ask for the same version.
+
+| `java-package`
+| String
+| `jdk`
+| Package type to install: `jdk`, `jre`, or a distribution-specific variant such as `jdk+fx`.
+
+| `architecture`
+| String
+| The machine's architecture
+| Architecture to install for: `x64`, `x86`, `aarch64`, `armv7`, `ppc64le`, `ppc64`, `riscv64`, or `s390x`. The function also accepts `amd64` and `arm64`.
+
+| `jdk-file`
+| String
+| None
+| JDK archive to install (`.tar.gz`, `.tgz`, or `.zip`). Requires `distribution: jdkfile`.
+
+| `make-default-jdk`
+| Boolean
+| `true`
+| Make this JDK the one that `java`, `javac`, and `JAVA_HOME` resolve to. Set to `false` to install it for build-tool toolchains only.
+
+| `cache`
+| Boolean
+| `true`
+| Restore the JDK from the job cache, and save it after a download. Set to `false` to turn off JDK caching.
+
+| `cache-dependencies`
+| String
+| None
+| Also cache what this build tool downloads: `maven` or `gradle`. Refer to <<dependency-caching>>.
+
+| `cache-dependency-path`
+| String
+| None
+| Build files to key the dependency cache on, as globs relative to the working directory, for example `backend/**/pom.xml`. Separate several with commas. Requires `cache-dependencies`.
+
+| `cache-path`
+| String
+| None
+| Folders to cache in place of the build tool's own. Separate several with commas. `~` is the home directory. Requires `cache-dependencies`.
+
+| `cache-read-only`
+| Boolean
+| `false`
+| Restore the dependency cache, but do not save it at the end of the job. Requires `cache-dependencies`.
+|===
+--
+
+[#cache-dependencies]
+=== cache-dependencies
+
+Call this command as `java/cache-dependencies`. It caches what a build tool downloads without installing a JDK.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `build-tool`
+| String
+| Required
+| Build tool whose downloads to cache: `maven` or `gradle`.
+
+| `cache-dependency-path`
+| String
+| None
+| Build files to key the dependency cache on, as globs relative to the working directory. Separate several with commas.
+
+| `cache-path`
+| String
+| None
+| Folders to cache in place of the build tool's own. Separate several with commas. `~` is the home directory.
+
+| `cache-read-only`
+| Boolean
+| `false`
+| Restore the dependency cache, but do not save it at the end of the job.
+|===
+--
+
+[#how-it-works]
+== How it works
+
+[#installing-the-jdk]
+=== Installing the JDK
+
+The function looks up the newest build that matches the requested version and downloads it from the distribution vendor. It checks the download against the vendor's SHA-256 checksum and unpacks it under `~/.cache/setup-java`. It then runs the installed `java` once, so a JDK that cannot run on the machine fails this step rather than a later one.
+
+The function links every tool in the JDK's `bin` directory into a directory already on `PATH`, ahead of any JDK the image ships. Later steps run the tools by name in any shell.
+
+The function exports `JAVA_HOME` and the `JAVA_HOME_<major>_<ARCH>` variables through `$BASH_ENV`, so they reach later steps that run in Bash. Steps in other shells, such as `sh` on Alpine or PowerShell on Windows, find `java` and `javac` on `PATH` but do not see `JAVA_HOME`. The `graalvm` distribution also sets `GRAALVM_HOME`.
+
+On Windows, the function never replaces another JDK's `java.exe`. If a JDK in the image comes first on `PATH` and the function has no earlier directory to link into, it puts its own JDK first on `PATH` through `$BASH_ENV`. Bash steps then run the installed JDK, while PowerShell and cmd steps run the image's JDK.
+
+[#jdk-caching]
+=== JDK caching
+
+The function saves the JDK to the job cache after a download, and later jobs restore it from there. The function downloads each version once per platform. A `jdkfile` install is never cached, because the archive is already on the machine.
+
+[#dependency-caching]
+=== Dependency caching
+
+With `cache-dependencies` set, the function restores the dependency cache when it runs. It saves the cache at the end of the job only if the job succeeds, so a failed build never saves a partial download.
+
+[.table-scroll]
+--
+[cols="1,2,3", options="header"]
+|===
+| Build tool | Folders cached | Key built from
+
+| `maven`
+| `~/.m2/repository` and `~/.m2/wrapper/dists`
+| `**/pom.xml`, `**/.mvn/wrapper/maven-wrapper.properties`, and `**/.mvn/extensions.xml`
+
+| `gradle`
+| `~/.gradle/caches` and `~/.gradle/wrapper`
+| `**/*.gradle*`, `**/gradle.properties`, `**/gradle-wrapper.properties`, `gradle/*.versions.toml`, `**/versions.properties`, `buildSrc/**/Versions.kt`, and `buildSrc/**/Dependencies.kt`
+|===
+--
+
+The function finds build files under the step's working directory, so run the step in the project's directory. The key is a hash of the build files' names and contents. When no cache exists for the exact key, the function restores the newest cache for the same build tool. The build tool's wrapper has a cache of its own, keyed on the wrapper properties file. Gradle's folders follow `$GRADLE_USER_HOME` when it is set.
+
+NOTE: A step with dependency caching fails if the working directory contains no build files for the build tool.
+
+[#distributions]
+== Distributions
+
+[.table-scroll]
+--
+[cols="1,2,2", options="header"]
+|===
+| Distribution | Installs | Packages
+
+| `temurin`
+| link:https://adoptium.net[Eclipse Temurin]
+| `jdk`, `jre`
+
+| `zulu`
+| link:https://www.azul.com/downloads/[Azul Zulu]
+| `jdk`, `jre`, `jdk+fx`, `jre+fx`, `jdk+crac`, `jre+crac`
+
+| `corretto`
+| link:https://aws.amazon.com/corretto/[Amazon Corretto]
+| `jdk`, `jre`
+
+| `microsoft`
+| link:https://www.microsoft.com/openjdk[Microsoft Build of OpenJDK]
+| `jdk`
+
+| `oracle-openjdk`
+| link:https://jdk.java.net[Oracle OpenJDK builds]
+| `jdk`
+
+| `graalvm`
+| link:https://www.graalvm.org[Oracle GraalVM]
+| `jdk`
+
+| `jdkfile`
+| The JDK archive given in `jdk-file`
+| `jdk`
+|===
+--
+
+Packages ending in `+fx` include JavaFX. Packages ending in `+crac` include link:https://openjdk.org/projects/crac/[CRaC], which lets an app start from a saved snapshot.
+
+Some distributions accept fewer version forms:
+
+* Corretto publishes only the newest build of each version, so `21` works but an older `21.0.x` release does not.
+* Oracle GraalVM accepts a major version (`21`), a full version (`21.0.5`), or `latest`. It does not accept ranges or build numbers. Java 17 is available by full version only, such as `17.0.12`.
+* Only Temurin installs early-access builds.
+
+[#version-syntax]
+== Version syntax
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| `java-version` | Installs
+
+| `21`, `21.0`, `8`
+| The newest release of that version
+
+| `21.0.5`, `18.0.1.1`
+| The newest build of exactly that release
+
+| `21.0.5+11`
+| Exactly that build
+
+| `1.8`, `1.8.0_292`
+| The same forms, in Java 8 notation
+
+| `>=17 <22`, `17.x`
+| The newest release in the range
+
+| `latest`
+| The newest release
+
+| `26-ea`
+| The newest early-access build of 26 (Temurin only)
+|===
+--
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| `java-version-file` | Read from
+
+| `.java-version`
+| The first version in the file
+
+| `.tool-versions`
+| The `java` line, for example `java temurin-21.0.5+11.0.LTS`
+
+| `.sdkmanrc`
+| The `java` line, for example `java=21.0.5-tem`
+|===
+--
+
+[#platform-support]
+== Platform support
+
+The `setup-java` function runs on Linux, macOS, and Windows. On Linux, it detects whether the system uses glibc (Ubuntu, Debian, RHEL, and most others) or musl (Alpine) and installs a build for that C library.
+
+Available builds depend on the distribution, version, and architecture. The following distributions publish musl builds for Alpine:
+
+* `temurin`: x64 and aarch64.
+* `zulu`: x64 and aarch64, except the `+fx` packages.
+* `corretto`: x64 and aarch64.
+* `microsoft`: x64, Java 11 and 17 only.
+
+The `oracle-openjdk` and `graalvm` distributions publish no musl builds. Temurin publishes no Java 8 build for Apple silicon. When no build exists for the machine, the step fails with a message that says so.
+
+[#see-also]
+== See also
+
+* Refer to xref:use:functions-intro.adoc[Functions Overview] for a starting point on using functions.
+* Refer to xref:use:functions-concepts.adoc[Functions Concepts] for how commands, arguments, versions, and validation work.
+* Refer to xref:use:functions-catalog.adoc[Functions Catalog] for the other functions CircleCI publishes.

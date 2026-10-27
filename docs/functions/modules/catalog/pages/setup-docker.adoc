@@ -1,0 +1,388 @@
+= setup-docker
+:page-badge: Beta
+:page-platform: Cloud
+:page-description: Install the Docker CLI, Buildx, and Docker Compose, then log in to registries and build, push, merge, and lint images in a CircleCI job.
+:experimental:
+
+The `setup-docker` function installs the Docker CLI and its plugins for the rest of a job, and provides commands for the common image tasks that follow. The function provides:
+
+* The Docker CLI, the Buildx and Docker Compose plugins, and optionally `dockerize` and `goss`.
+* Registry login for Docker Hub, GitHub Container Registry, Amazon ECR, and other registries.
+* Image builds with Buildx, including multi-platform builds, attestations, and push by digest.
+* A merge command that combines per-platform images into one multi-platform tag.
+* Dockerfile linting with `hadolint`, with JUnit XML output for test results.
+
+[#quickstart]
+== Quickstart
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  setup-docker: github.com/circleci-functions/setup-docker@v0.4.0
+
+jobs:
+  build:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - setup_remote_docker
+      - setup-docker
+      - run: docker build -t my-app .
+
+workflows:
+  main:
+    jobs:
+      - build
+----
+
+The `setup-docker` step installs the Docker CLI, Buildx, and Docker Compose. The `setup_remote_docker` step provides the Docker engine that later steps build and run containers against.
+
+[#usage-examples]
+== Usage examples
+
+[#pin-tool-versions]
+=== Pin tool versions
+
+[,yaml]
+----
+      - setup-docker:
+          with:
+            docker-version: 29.9.1
+            compose-version: v2.29.7
+----
+
+Each `*-version` argument takes an exact version or `latest`. Leave an argument empty to keep the tool already on the image.
+
+[#install-extra-tools]
+=== Install extra tools
+
+[,yaml]
+----
+      - setup-docker:
+          with:
+            install-docker: false
+            install-buildx: false
+            install-dockerize: true
+            install-goss: true
+----
+
+This example keeps the Docker CLI and Buildx from the image and adds `dockerize`, `goss`, and `dgoss`.
+
+[#log-in-and-push-an-image]
+=== Log in and push an image
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  setup-docker: github.com/circleci-functions/setup-docker@v0.4.0
+
+jobs:
+  publish:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - setup_remote_docker
+      - setup-docker
+      - setup-docker/login:
+          with:
+            registry: ghcr.io
+            username-env: GHCR_USER
+            password-env: GHCR_TOKEN
+      - setup-docker/build:
+          with:
+            image: ghcr.io/my-org/my-app
+            tags: latest
+            platforms: linux/amd64,linux/arm64
+            push: true
+
+workflows:
+  main:
+    jobs:
+      - publish:
+          context: ghcr-credentials
+----
+
+Store `GHCR_USER` and `GHCR_TOKEN` in a context or as project environment variables. The `login` command reads the values from the environment variables you name, so your configuration never contains the credentials. For Docker Hub, store `DOCKER_LOGIN` and `DOCKER_PASSWORD` and call `setup-docker/login` with no arguments. For Amazon ECR, set `registry` to your ECR registry after a step that sets up AWS credentials. ECR login needs no username or password.
+
+[#cache-image-layers]
+=== Cache image layers
+
+[,yaml]
+----
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - setup-docker/build:
+          with:
+            image: my-org/my-app
+            tags: latest
+----
+
+The `build` command uses a builder named `setup-docker`, which Docker Layer Caching keeps between jobs. On a `machine` executor, set `docker_layer_caching: true` under `machine`. To keep the cache in a registry instead, pass `cache-from` and `cache-to`, for example `type=registry,ref=my-org/my-app:cache`.
+
+[#build-per-platform-and-merge]
+=== Build per platform and merge
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  setup-docker: github.com/circleci-functions/setup-docker@v0.4.0
+
+jobs:
+  build-amd64:
+    machine:
+      image: ubuntu-2404:current
+    steps:
+      - checkout
+      - setup-docker/login
+      - setup-docker/build:
+          with:
+            image: my-org/my-app
+            platforms: linux/amd64
+            push-by-digest: true
+            digest-file: digests/amd64
+      - persist_to_workspace:
+          root: .
+          paths: [digests]
+  build-arm64:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: arm.medium
+    steps:
+      - checkout
+      - setup-docker/login
+      - setup-docker/build:
+          with:
+            image: my-org/my-app
+            platforms: linux/arm64
+            push-by-digest: true
+            digest-file: digests/arm64
+      - persist_to_workspace:
+          root: .
+          paths: [digests]
+  merge:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - attach_workspace:
+          at: .
+      - setup-docker/login
+      - setup-docker/merge:
+          with:
+            image: my-org/my-app
+            tags: latest,1.2.3
+
+workflows:
+  main:
+    jobs:
+      - build-amd64:
+          context: docker-hub-credentials
+      - build-arm64:
+          context: docker-hub-credentials
+      - merge:
+          context: docker-hub-credentials
+          requires: [build-amd64, build-arm64]
+----
+
+Each architecture builds natively in its own job and pushes by digest. The `merge` job then publishes one multi-platform tag, and needs no Docker engine.
+
+[#lint-dockerfiles]
+=== Lint Dockerfiles
+
+[,yaml]
+----
+      - setup-docker/lint:
+          with:
+            dockerfiles: Dockerfile
+            failure-threshold: warning
+            ignore-rules: DL3008,SC2086
+            results-file: test-results/hadolint.xml
+      - store_test_results:
+          path: test-results
+----
+
+The `lint` command fails the step on findings at or above `failure-threshold`, and `store_test_results` shows the findings with the job's test results.
+
+[#commands]
+== Commands
+
+[#default-command]
+=== Default command
+
+Call the default command as `setup-docker`. It installs the Docker CLI and its plugins.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `install-docker` | Boolean | `true` | Install the Docker CLI.
+| `install-buildx` | Boolean | `true` | Install the Buildx plugin.
+| `install-compose` | Boolean | `true` | Install the Docker Compose plugin, which is also on `PATH` as `docker-compose`.
+| `install-dockerize` | Boolean | `false` | Install `dockerize`.
+| `install-goss` | Boolean | `false` | Install `goss` and `dgoss`.
+| `docker-version` | String | Empty | Docker CLI version, or `latest`. Empty keeps the `docker` on `PATH`, or installs the version pinned in this release if none exists.
+| `buildx-version` | String | Empty | Buildx version, or `latest`. Empty keeps an installed Buildx, or installs the pinned version.
+| `compose-version` | String | Empty | Docker Compose version, or `latest`. Empty keeps an installed Docker Compose, or installs the pinned version.
+| `dockerize-version` | String | Empty | `dockerize` version, or `latest`. Empty keeps the `dockerize` on `PATH`, or installs the pinned version.
+| `goss-version` | String | Empty | `goss` version, or `latest`. Empty keeps the `goss` on `PATH`, or installs the pinned version.
+| `install-dir` | String | Empty | Link binaries into this directory instead of one already on `PATH`.
+|===
+--
+
+[#login]
+=== login
+
+Call `setup-docker/login` to log in to a container registry after you install Docker. For an Amazon ECR registry, the command uses `docker-credential-ecr-login`, which reads AWS credentials from the environment, and ignores the username and password variables.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `registry` | String | `docker.io` | Registry to log in to.
+| `username-env` | String | `DOCKER_LOGIN` | Name of the environment variable that holds the username.
+| `password-env` | String | `DOCKER_PASSWORD` | Name of the environment variable that holds the password or token.
+| `retries` | Integer | `3` | Number of times to retry a failed login, with increasing waits.
+| `credentials-store` | Boolean | `false` | Store credentials with a credential helper instead of in the Docker config file.
+| `credentials-helper` | String | Empty | Credential helper to use: `pass` or `osxkeychain`. Empty picks `pass` on Linux and `osxkeychain` on macOS.
+| `credentials-helper-version` | String | Empty | Credential helper version, or `latest`. Empty installs the pinned version.
+|===
+--
+
+[#build]
+=== build
+
+Call `setup-docker/build` to build an image with Buildx and optionally push it. The command installs Buildx if needed and needs a reachable Docker engine. Use `setup_remote_docker`, a `machine` executor, or set `DOCKER_HOST`.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `image` | String | Required | Image to build, for example `my-org/my-app` or `ghcr.io/my-org/my-app`.
+| `registry` | String | `docker.io` | Registry prefixed to `image` when `image` names no registry.
+| `tags` | String | Empty | Tags, comma or newline separated. Empty uses `$CIRCLE_SHA1`.
+| `dockerfile` | String | Empty | Path to the Dockerfile. Empty uses the `Dockerfile` in `context`.
+| `context` | String | `.` | Build context directory.
+| `target` | String | Empty | Build stage to stop at.
+| `platforms` | String | Empty | Target platforms, comma separated, for example `linux/amd64,linux/arm64`.
+| `push` | Boolean | `false` | Push the image after building.
+| `load` | Enum | `auto` | Load the image into the Docker engine: `auto`, `true`, or `false`. The `auto` value loads single-platform builds that are not pushed.
+| `build-args` | String | Empty | Build arguments, one `KEY=VALUE` per line.
+| `labels` | String | Empty | Image labels, one `KEY=VALUE` per line.
+| `secret-envs` | String | Empty | Build secrets from environment variables, comma or newline separated. Use `ID=ENV_NAME`, or `ENV_NAME` to use the variable name as the ID.
+| `pull` | Boolean | `false` | Always pull newer base images.
+| `no-cache` | Boolean | `false` | Build without using any cache.
+| `cache-from` | String | Empty | Extra cache sources, whitespace separated, for example `type=registry,ref=my-org/my-app:cache`.
+| `cache-to` | String | Empty | Extra cache destinations, whitespace separated.
+| `provenance` | Boolean | `false` | Attach a provenance attestation.
+| `sbom` | Boolean | `false` | Attach an SBOM attestation. Requires `push` or `sbom-file`.
+| `sbom-file` | String | Empty | Also write the SBOM, in SPDX JSON format, to this path.
+| `check` | Boolean | `false` | Run the Dockerfile build checks first. The step prints warnings, and errors fail the build.
+| `check-warnings-as-errors` | Boolean | `false` | With `check`, fail on warnings too.
+| `push-by-digest` | Boolean | `false` | Push without tags and write the digest to `digest-file`, for merging per-platform builds.
+| `digest-file` | String | Empty | Write the image digest to this path.
+| `buildkitd-config` | String | Empty | Path to a `buildkitd.toml` for the builder, for example to configure a registry mirror or an insecure registry.
+| `extra-args` | String | Empty | Extra `docker buildx build` arguments, split as a shell would split them.
+| `retries` | Integer | `3` | Number of times to retry a build that fails while pushing.
+|===
+--
+
+[#merge]
+=== merge
+
+Call `setup-docker/merge` to combine per-platform images, each pushed by digest with `build`, into one multi-platform manifest index. The command needs no Docker engine.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `image` | String | Required | Image to publish, for example `my-org/my-app` or `ghcr.io/my-org/my-app`.
+| `registry` | String | `docker.io` | Registry prefixed to `image` when `image` names no registry.
+| `tags` | String | Empty | Tags, comma or newline separated. Empty uses `$CIRCLE_SHA1`.
+| `digests-dir` | String | `digests` | Directory of digest files that `build` wrote with `push-by-digest`, one per platform.
+| `digest-file` | String | Empty | Write the digest of the merged image to this path.
+| `retries` | Integer | `3` | Number of times to retry a failed merge.
+|===
+--
+
+[#lint]
+=== lint
+
+Call `setup-docker/lint` to lint Dockerfiles with link:https://github.com/hadolint/hadolint[`hadolint`]. The command installs `hadolint` and needs no Docker engine.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `dockerfiles` | String | `Dockerfile` | Dockerfiles to lint, newline or colon separated. Use semicolons on Windows.
+| `failure-threshold` | Enum | `info` | Fail on findings at or above this level: `error`, `warning`, `info`, `style`, `ignore`, or `none`. The levels `style`, `ignore`, and `none` fail on any finding.
+| `ignore-rules` | String | Empty | Rules to ignore, comma separated, for example `DL3008,SC2086`.
+| `trusted-registries` | String | Empty | Registries that base images can come from, comma separated. The command reports base images from other registries.
+| `results-file` | String | Empty | Also write the findings as JUnit XML to this path, for `store_test_results`.
+| `hadolint-version` | String | Empty | `hadolint` version, or `latest`. Empty installs the pinned version.
+|===
+--
+
+[#how-it-works]
+== How it works
+
+The function downloads each tool from its official release source and checks it against the checksums the project publishes. The Docker CLI project publishes no checksums, so the function verifies only the pinned default Docker CLI version, and downloads any other version over HTTPS with a warning.
+
+The function stores binaries under `~/.cache/setup-docker/<tool>/<version>` and links them into a directory already on `PATH`, or into `install-dir`. Later steps find them by name in any shell. The Buildx and Docker Compose plugins go in the Docker CLI plugin directory, `$DOCKER_CONFIG/cli-plugins`, which defaults to `~/.docker/cli-plugins`. The function does not write to `$BASH_ENV`.
+
+When a tool already exists on `PATH` at the requested version, the function keeps it. When the version differs, the function installs the requested version alongside the existing copy and gives it precedence. The function never removes the image's copy.
+
+With `setup_remote_docker`, the function sets up the Docker client only. The `setup_remote_docker` step controls the engine version, not `docker-version`.
+
+For multi-platform builds, `build` registers QEMU emulators for foreign platforms and removes them after the build. Emulators registered before the build stay in place.
+
+[#version-syntax]
+== Version syntax
+
+The `*-version` arguments accept the following forms:
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| Form | Result
+
+| Empty | Keeps the tool already on `PATH`. If none exists, installs the version pinned in this release.
+| `latest` | Installs the latest release.
+| An exact version, such as `29.9.1` for Docker or `v2.29.7` for Docker Compose | Installs that version.
+|===
+--
+
+[#platform-support]
+== Platform support
+
+The function runs on Linux and macOS on amd64 and arm64. On Windows amd64, it installs the Docker CLI, Buildx, and Docker Compose. On Windows arm64, only Buildx and Docker Compose are available, because Docker publishes no Windows arm64 CLI. On Alpine, the function uses the Alpine build of `dockerize`.
+
+The `dockerize` and `goss` tools have no Windows builds, and the function returns an error if you request them on Windows. macOS has no Docker daemon, so running containers on macOS requires a remote daemon.
+
+On Windows executors, `build` builds Windows container images with the classic Docker builder. The following `build` arguments are not available on Windows: `platforms`, `cache-from`, `cache-to`, `sbom`, `sbom-file`, `provenance`, `secret-envs`, `check`, `push-by-digest`, `buildkitd-config`, and `load: false`.
+
+To build Linux images, use a Docker executor with `setup_remote_docker`, a `machine` executor, or point `DOCKER_HOST` at a Linux daemon. macOS jobs also need `DOCKER_HOST`.
+
+[#see-also]
+== See also
+
+* Refer to xref:use:functions-intro.adoc[Functions Overview] for a starting point on using functions.
+* Refer to xref:use:functions-concepts.adoc[Functions Concepts] for how commands, arguments, versions, and validation work.
+* Refer to xref:use:functions-catalog.adoc[Functions Catalog] for the other functions CircleCI publishes.

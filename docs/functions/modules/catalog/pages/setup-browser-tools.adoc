@@ -1,0 +1,337 @@
+= setup-browser-tools
+:page-badge: Beta
+:page-platform: Cloud
+:page-description: Install Chrome, Chrome for Testing, ChromeDriver, Firefox, geckodriver, Microsoft Edge, and Edge WebDriver in a CircleCI job.
+:experimental:
+
+The `setup-browser-tools` function installs browsers and browser-testing tools into a CircleCI job. It covers Google Chrome, Chrome for Testing, ChromeDriver, Microsoft Edge, Edge WebDriver, Firefox, and geckodriver. The function provides:
+
+* One command that installs Chrome, ChromeDriver, Firefox, and geckodriver by default.
+* A separate command for each browser and driver, so a job installs only what it needs.
+* Pinned versions, or the latest release from each vendor.
+* Checksum and signature verification for Firefox downloads.
+* Optional caching of the Firefox installer and the Chrome package in the CircleCI job cache.
+
+[#quickstart]
+== Quickstart
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  browser-tools: github.com/circleci-functions/setup-browser-tools@v0.4.0
+
+jobs:
+  test:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - browser-tools/install-browser-tools
+      - run: google-chrome --version && firefox --version
+
+workflows:
+  main:
+    jobs:
+      - test
+----
+
+The `install-browser-tools` command installs the latest Chrome, ChromeDriver, Firefox, and geckodriver. The function has no default command, so always call a command as `browser-tools/<command>`.
+
+[#usage-examples]
+== Usage examples
+
+[#pin-browser-versions]
+=== Pin browser versions
+
+[,yaml]
+----
+      - browser-tools/install-browser-tools:
+          with:
+            chrome-version: 147.0.7727.55
+            firefox-version: 149.0.2
+----
+
+Each version argument takes an exact version or `latest`. A version can also reference an environment variable, such as `$CHROME_VERSION`.
+
+[#install-edge-instead-of-firefox]
+=== Install Edge instead of Firefox
+
+[,yaml]
+----
+      - browser-tools/install-browser-tools:
+          with:
+            firefox: false
+            geckodriver: false
+            edge: true
+            edge-driver: true
+----
+
+Set a Boolean argument to `false` to turn off a component that installs by default.
+
+[#install-chrome-and-chromedriver]
+=== Install Chrome and ChromeDriver only
+
+[,yaml]
+----
+      - browser-tools/install-chrome:
+          with:
+            channel: beta
+      - browser-tools/install-chromedriver
+----
+
+The `install-chromedriver` command picks the driver that matches the installed Chrome, so run it after `install-chrome`.
+
+[#install-chrome-for-testing]
+=== Install Chrome for Testing
+
+[,yaml]
+----
+      - browser-tools/install-chrome-for-testing:
+          with:
+            version: 147.0.7727.55
+            install-dir: /home/circleci/bin
+----
+
+This command installs Chrome for Testing and its matching ChromeDriver into the directory you choose.
+
+[#cache-browser-downloads]
+=== Cache browser downloads
+
+[,yaml]
+----
+      - browser-tools/install-firefox:
+          with:
+            version: 149.0.2
+            use-cache: true
+            cache-key: v2
+----
+
+Turn on `use-cache` when downloads from a vendor are unreliable. Caching increases cost and seldom speeds up a job, so it is off by default. Change `cache-key` to invalidate the cached entries.
+
+[#commands]
+== Commands
+
+The function has no default command. Call each command as `browser-tools/<command>`, where `browser-tools` is the alias you declare in the `functions:` block.
+
+[#install-browser-tools]
+=== install-browser-tools
+
+Installs a configurable set of browsers and drivers in one step. The default set is Chrome and ChromeDriver plus Firefox and geckodriver.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `chrome` | Boolean | `true` | Install Google Chrome.
+| `chromedriver` | Boolean | `true` | Install ChromeDriver.
+| `firefox` | Boolean | `true` | Install Mozilla Firefox.
+| `geckodriver` | Boolean | `true` | Install geckodriver.
+| `chrome-for-testing` | Boolean | `false` | Install Chrome for Testing.
+| `chrome-for-testing-driver` | Boolean | `false` | Install the Chrome for Testing ChromeDriver in place of the default ChromeDriver. Setting `chromedriver: true` as well is an error.
+| `edge` | Boolean | `false` | Install Microsoft Edge.
+| `edge-driver` | Boolean | `false` | Install Edge WebDriver.
+| `chrome-version` | String | `latest` | Version of Chrome to install.
+| `replace-existing-chrome` | Boolean | `false` | Replace an existing Chrome when it is a different version. Without it, the function keeps an installed Chrome whatever its version.
+| `chromedriver-install-dir` | String | `/usr/local/bin` | Directory to install ChromeDriver into.
+| `chrome-for-testing-version` | String | `latest` | Version of Chrome for Testing to install.
+| `chrome-for-testing-install-dir` | String | `/usr/local/bin` | Directory to symlink Chrome for Testing into and copy its driver into.
+| `firefox-version` | String | `latest` | Version of Firefox to install.
+| `firefox-install-dir` | String | `/usr/local/bin` | Directory to install Firefox into.
+| `geckodriver-version` | String | `latest` | Release tag of geckodriver to install.
+| `geckodriver-install-dir` | String | `/usr/local/bin` | Directory to install geckodriver into.
+| `edge-version` | String | `latest` | Version of Edge to install.
+| `edge-driver-install-dir` | String | `/usr/local/bin` | Directory to install Edge WebDriver into.
+|===
+--
+
+[#install-chrome]
+=== install-chrome
+
+Installs Google Chrome, or Chromium on Alpine.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `version` | String | `latest` | Version to install, for example `147.0.7727.55`.
+| `channel` | Enum | `stable` | Release channel: `stable` or `beta`.
+| `replace-existing` | Boolean | `false` | Replace an existing Chrome of the same channel when it is a different version. Without it, the function keeps an installed Chrome of that channel whatever its version.
+| `use-cache` | Boolean | `false` | Restore and save the Chrome package through the job cache.
+| `cache-key` | String | `v1` | Cache key prefix, for invalidating cached entries.
+|===
+--
+
+[#install-chromedriver]
+=== install-chromedriver
+
+Installs the ChromeDriver that matches the installed Chrome. Install Chrome first.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `install-dir` | String | `/usr/local/bin` | Directory to install into. On Alpine, the package manager chooses the directory.
+|===
+--
+
+[#install-firefox]
+=== install-firefox
+
+Installs Mozilla Firefox.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `version` | String | `latest` | Version to install, for example `149.0.2` or `140.9.1esr`.
+| `install-dir` | String | `/usr/local/bin` | Directory to install into. The function also creates a symlink in `/usr/local/bin`.
+| `use-cache` | Boolean | `false` | Restore and save the installer through the job cache. The function ignores this argument when `version` is `latest`.
+| `cache-key` | String | `v1` | Cache key prefix, for invalidating cached entries.
+|===
+--
+
+[#install-geckodriver]
+=== install-geckodriver
+
+Installs geckodriver, the WebDriver proxy for Firefox.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `version` | String | `latest` | Release tag to install, for example `v0.36.0`.
+| `install-dir` | String | `/usr/local/bin` | Directory to install into.
+|===
+--
+
+[#install-chrome-for-testing-command]
+=== install-chrome-for-testing
+
+Installs Chrome for Testing and, by default, its matching ChromeDriver.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `version` | String | `latest` | Version to install.
+| `install-dir` | String | `/usr/local/bin` | Directory to symlink Chrome for Testing into and copy its driver into.
+| `chromedriver` | Boolean | `true` | Also install the matching ChromeDriver.
+|===
+--
+
+[#install-edge]
+=== install-edge
+
+Installs Microsoft Edge.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `version` | String | `latest` | Version to install. The function honors this argument on Debian and Ubuntu only. On macOS, it always installs the latest version.
+|===
+--
+
+[#install-edge-driver]
+=== install-edge-driver
+
+Installs the Edge WebDriver that matches the installed Edge. Install Edge first.
+
+[.table-scroll]
+--
+[cols="2,1,1,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `install-dir` | String | `/usr/local/bin` | Directory to install into.
+|===
+--
+
+[#how-it-works]
+== How it works
+
+The function downloads each browser and driver from its vendor. On Linux, it installs browsers and their dependencies with the system package manager, so the job needs root or `sudo`. On macOS, it installs Edge with `brew`. The drivers need neither root nor `sudo` when the install directory is writable. Without the privileges it needs, a command fails before downloading anything and reports what is missing.
+
+Drivers and symlinks go in `/usr/local/bin` by default, which is on `PATH` in CircleCI images, so later steps find each tool by name. The function records what it installed in `$HOME/.browser-versions`, one line per browser.
+
+The `install-chromedriver` and `install-edge-driver` commands pick the driver for the installed browser. When no driver exists for that build, ChromeDriver falls back to the newest driver for the same milestone. Edge WebDriver falls back to the newest driver for the same major version.
+
+The function verifies each Firefox download against the published checksum manifest, and verifies the manifest's OpenPGP signature with `gpg`. On Debian, Ubuntu, and RHEL, the function installs `gpg` with Firefox's other dependencies if it is missing. On macOS, `gpg` comes from `brew`.
+
+[#job-cache]
+=== Job cache
+
+With `use-cache`, `install-chrome` and `install-firefox` restore from the CircleCI job cache before downloading, and save to it after. For Firefox, the cache holds the downloaded installer, which the function verifies in the same way as a fresh download. For Chrome on Debian, Ubuntu, and RHEL, the cache holds the downloaded `.deb` or `.rpm` package. The function installs a restored Chrome package with `apt` or `yum`, so Chrome's shared-library dependencies come with it. On Alpine and macOS, the function caches nothing for Chrome.
+
+Cache keys take the following form:
+
+[,shell]
+----
+setup-browser-tools-chrome-<cache-key>-<channel>-<version>-<os>-<arch>
+setup-browser-tools-firefox-<cache-key>-<version>-<os>-<arch>
+----
+
+A cache miss, an unreachable cache, or a run outside a CircleCI job falls through to a normal install.
+
+[#version-syntax]
+== Version syntax
+
+Version arguments accept the following forms:
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| Form | Result
+
+| `latest` | Installs the latest stable release from the vendor.
+| An exact version, such as `147.0.7727.55`, `149.0.2`, or `140.9.1esr` | Installs that version as given. For geckodriver, use a release tag such as `v0.36.0`.
+| `$NAME` or `+${NAME}+` | Reads the version from the environment variable `NAME`. An unset or empty variable is an error.
+|===
+--
+
+[#platform-support]
+== Platform support
+
+Coverage varies by browser, because each vendor publishes different builds. The distribution columns apply to amd64 hosts. The Linux arm64 column covers every distribution on arm64. The function does not support Windows.
+
+[.table-scroll]
+--
+[cols="2,1,1,1,1,1", options="header"]
+|===
+| Command | macOS | Debian and Ubuntu | Alpine | RHEL and CentOS | Linux arm64
+
+| `install-chrome` | Yes | Yes | Yes, as Chromium | Yes | Alpine only, as Chromium
+| `install-chromedriver` | Yes | Yes | Yes | Yes, requires `unzip` | Alpine only
+| `install-firefox` | Yes | Yes | No | Yes | No
+| `install-geckodriver` | Yes | Yes | Yes | Yes | Yes
+| `install-chrome-for-testing` | Yes | Yes | No | No | No
+| `install-edge` | Yes | Yes | No | No | No
+| `install-edge-driver` | Yes | Yes | No | No | No
+|===
+--
+
+Requesting a browser on a platform without a published build is an error. The exception is `install-browser-tools`: when a component is on only by default, the function skips it with a warning. For example, on Alpine, `install-browser-tools` with no arguments installs Chromium, ChromeDriver, and geckodriver, and reports why it skipped Firefox. Setting that component explicitly makes it an error instead.
+
+[#see-also]
+== See also
+
+* Refer to xref:use:functions-intro.adoc[Functions Overview] for a starting point on using functions.
+* Refer to xref:use:functions-concepts.adoc[Functions Concepts] for how commands, arguments, versions, and validation work.
+* Refer to xref:use:functions-catalog.adoc[Functions Catalog] for the other functions CircleCI publishes.

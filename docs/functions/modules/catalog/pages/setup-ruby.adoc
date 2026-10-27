@@ -1,0 +1,346 @@
+= setup-ruby
+:page-badge: Beta
+:page-platform: Cloud
+:page-description: Install Ruby and Bundler for every later step in the job, then install and cache your project's gems with Bundler.
+:experimental:
+
+The `setup-ruby` function installs Ruby and puts `ruby`, `gem`, and `bundle` on `PATH` for every later step in the job. Its `install-gems` command installs your gems with Bundler and caches them, so later builds start warm.
+
+* Installs any CRuby release by version spec, or the version your `.ruby-version`, `.tool-versions`, or `mise.toml` declares.
+* Makes `ruby`, `gem`, `bundle`, `rake`, and the other Ruby executables available to later steps in any shell.
+* Installs the Bundler version recorded in your `Gemfile.lock`.
+* Caches the installed Ruby and your installed gems.
+* Runs on Linux, macOS, and Windows, including Alpine.
+
+[#quickstart]
+== Quickstart
+
+[,yaml]
+----
+version: 2.1
+
+functions:
+  ruby: github.com/circleci-functions/setup-ruby@v0.3.0
+
+jobs:
+  test:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - ruby:
+          with:
+            ruby-version: "3.4"
+      - ruby/install-gems
+      - run: bundle exec rake
+
+workflows:
+  main:
+    jobs:
+      - test
+----
+
+The `ruby` step installs the newest stable Ruby 3.4 release and the Bundler version from your `Gemfile.lock`. The `ruby/install-gems` step restores the gem cache, runs `bundle install`, and saves the cache again.
+
+To add the `functions:` entry at the latest version, run `circleci function add setup-ruby --as ruby`. To list published versions and arguments, run `circleci function get setup-ruby`.
+
+[#usage-examples]
+== Usage examples
+
+[#read-the-version-from-a-file]
+=== Read the version from a file
+
+[,yaml]
+----
+- ruby:
+    with:
+      ruby-version-file: .tool-versions
+----
+
+The function reads the `ruby` line from `.tool-versions`. With no version arguments, the function looks for `.ruby-version`, `.tool-versions`, and then `mise.toml` in `working-directory`.
+
+[#install-gems-in-a-subdirectory]
+=== Install gems in a subdirectory
+
+[,yaml]
+----
+- ruby:
+    with:
+      working-directory: ./api
+- ruby/install-gems:
+    with:
+      app-dir: ./api
+- run:
+    working_directory: ./api
+    command: bundle exec rspec
+----
+
+The `working-directory` argument tells the default command where to find version files and the lock file. The `app-dir` argument tells `install-gems` where to find the `Gemfile`.
+
+[#clean-up-unused-gems]
+=== Clean up unused gems
+
+[,yaml]
+----
+- ruby/install-gems:
+    with:
+      key: gems-v2
+      clean-bundle: true
+----
+
+The `clean-bundle` argument runs `bundle clean --force` after the install, so gems your lock file no longer lists do not stay in the cache. Change `key` to start from an empty cache.
+
+[#skip-the-windows-build-tools]
+=== Skip the Windows build tools
+
+[,yaml]
+----
+- ruby:
+    with:
+      windows-toolchain: none
+----
+
+On Windows, the function installs the MSYS2 build tools that gems with native extensions compile with. These tools are a large download. Skip them when no gem needs compiling.
+
+[#commands]
+== Commands
+
+The `setup-ruby` function has two commands. Each argument below is a `with:` key.
+
+[#default-command]
+=== Default command
+
+Called as `<alias>` (for example, `ruby`). Installs Ruby, Bundler, and optionally a newer RubyGems, and links the Ruby executables onto `PATH`. A step with no arguments reads the version from a version file, then falls back to the Ruby already on `PATH`, and installs the newest stable release only when neither exists.
+
+[.table-scroll]
+--
+[cols="2,1,2,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `ruby-version`
+| String
+| (empty)
+| Ruby version spec to install. Refer to the <<version-syntax>> section. Takes precedence over `ruby-version-file`.
+
+| `ruby-version-file`
+| String
+| (empty)
+| File to read the version from: `.ruby-version`, `.tool-versions`, or `mise.toml`.
+
+| `working-directory`
+| String
+| `.`
+| Directory to look for version files and the lock file in.
+
+| `bundler`
+| String
+| `Gemfile.lock`
+| Bundler version to install. Refer to the <<bundler-and-rubygems-versions>> section.
+
+| `rubygems`
+| String
+| `default`
+| RubyGems version. `default` keeps the version Ruby ships, `latest` runs `gem update --system`, and a version such as `3.6.9` updates to it when it is newer than the one Ruby ships.
+
+| `windows-toolchain`
+| String
+| `default`
+| On Windows, `default` installs the MSYS2 build tools and `none` skips them.
+
+| `bin-dir`
+| String
+| (empty)
+| Link `ruby`, `gem`, and `bundle` into this directory instead of discovering one on `PATH`. The directory must be on `PATH` for later steps.
+
+| `cache`
+| Boolean
+| `true`
+| Restore the Ruby install from the job cache, and save it after a fresh download. Set to `false` to turn off caching.
+|===
+--
+
+[#install-gems]
+=== install-gems
+
+Called as `<alias>/install-gems` (for example, `ruby/install-gems`). Installs the gems your `Gemfile` declares with the `bundle` on `PATH`, restoring the gem cache before the install and saving it afterwards. Run the default command first, or use an image with Ruby and Bundler on `PATH`, such as `cimg/ruby`.
+
+[.table-scroll]
+--
+[cols="2,1,2,4", options="header"]
+|===
+| Argument | Type | Default | Description
+
+| `app-dir`
+| String
+| `.`
+| Directory containing the `Gemfile`.
+
+| `gemfile`
+| String
+| `Gemfile`
+| Name of the Gemfile.
+
+| `path`
+| String
+| `./vendor/bundle`
+| Directory to install gems into, relative to `app-dir`. The default turns on Bundler deployment mode.
+
+| `key`
+| String
+| `gems-v1`
+| Cache key prefix. Change it to force a cache miss.
+
+| `clean-bundle`
+| Boolean
+| `false`
+| Run `bundle clean --force` after the install.
+
+| `override-cache-file`
+| String
+| (empty)
+| Lock file to key the cache on instead of the detected one.
+
+| `cache`
+| Boolean
+| `true`
+| Restore the gem cache before the install and save it afterwards. Set to `false` to turn off caching.
+
+| `include-arch-in-cache-key`
+| Boolean
+| `true`
+| Include the architecture in the cache key.
+
+| `include-branch-in-cache-key`
+| Boolean
+| `true`
+| Include the branch in the cache key.
+
+| `only-use-gemfile-checksum-cache-key`
+| Boolean
+| `false`
+| Restore only the exact checksum key, without the fallback to the newest cache for the branch.
+|===
+--
+
+[#how-it-works]
+== How it works
+
+[#install-ruby]
+=== Install Ruby
+
+The function downloads a prebuilt, relocatable Ruby for the machine it runs on and checks it against its SHA-256 checksum. Each release of the function includes the list of available builds, so a partial version such as `3.4` resolves to the newest release in that list. To pick up newer Ruby releases, upgrade the function.
+
+With caching on, the function saves the unpacked install, and on Windows the build tools, to the job cache. The cache key combines the Ruby version, platform, and build. Later jobs restore the install instead of downloading it again. Cache problems never fail the job.
+
+The function also writes a `~/.gemrc` that turns off documentation generation, unless you already have one.
+
+[#link-ruby-onto-path]
+=== Make Ruby available to later steps
+
+The function links `ruby`, `gem`, `bundle`, `bundler`, `irb`, `rake`, `erb`, `rdoc`, and `ri` into a directory that is already on `PATH`, so later steps run them by name in any shell. It uses the first of `~/.local/bin`, `~/bin`, and `/usr/local/bin` that is on `PATH` ahead of any existing `ruby` and that it can write to. Otherwise, it links into the directory of the `ruby` already on `PATH`. When the function replaces an existing binary, it keeps the original beside it as `<name>.pathlink-old`.
+
+Where `ruby` already resolves through `rbenv` shims, the function registers the install with `rbenv` and makes it the global version. If a `.ruby-version` file in `working-directory` or `$RBENV_VERSION` selects a different Ruby, the step fails.
+
+NOTE: If the link directory needs root, the function links with `sudo -n`, and the step fails unless `sudo` runs without a password. To avoid this, put `~/.local/bin` on `PATH` ahead of that directory, or set `bin-dir`. The function checks this before it downloads anything.
+
+Where it can, the function has `gem install` put gem executables beside `ruby`, so `gem install rubocop` makes `rubocop` available by name in later steps. When you set `$GEM_HOME`, executables go to `$GEM_HOME/bin` instead.
+
+[#install-and-cache-gems]
+=== Install and cache gems
+
+The `install-gems` command configures Bundler to install into `path`, then runs `bundle install` unless `bundle check` already passes. It saves the `path` directory to the cache.
+
+The cache key is `<key>-<arch>-<branch>-<checksum>`, where `<checksum>` is a SHA-256 checksum of the lock file. A changed lock file refreshes the cache on its own. On restore, the function also tries the looser `<key>-<arch>-<branch>-` prefix, so a changed lock file still starts from the last build's gems. When the function finds no lock file, it installs without caching.
+
+The function picks the lock file for the cache key in the following order:
+
+. The `override-cache-file` value, when you set it.
+. `Gemfile_next.lock`, when the `DEPENDENCIES_NEXT` environment variable is set.
+. A `.locked` sibling, for a Gemfile that ends in `.rb`.
+. `<gemfile>.lock`
+
+[#version-syntax]
+== Version syntax
+
+The `ruby-version` argument accepts the following forms. The function ignores a leading `ruby-`, as in `ruby-3.4.1`.
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| Spec | Installs
+
+| `3.4.1`, `3.5.0-preview1`
+| That exact release
+
+| `3`, `3.4`, `3.4.x`
+| Newest matching stable release, or the newest prerelease when no stable release exists
+
+| `latest`
+| Newest stable release
+|===
+--
+
+The `ruby-version-file` argument reads the following files:
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| File | Read from
+
+| `.ruby-version`
+| First line that is not a comment
+
+| `.tool-versions`
+| The `ruby` line
+
+| `mise.toml`
+| `tools.ruby`
+|===
+--
+
+[#bundler-and-rubygems-versions]
+=== Bundler and RubyGems versions
+
+The `bundler` argument accepts the following values. The `bundler` and `rubygems` arguments also apply when the function uses the Ruby already on `PATH`.
+
+[.table-scroll]
+--
+[cols="1,2", options="header"]
+|===
+| Value | Installs
+
+| `Gemfile.lock`
+| The version in the `BUNDLED WITH` section of the lock file in `working-directory`, or the same as `default` when there is none
+
+| `default`
+| Nothing. The function uses the Bundler that Ruby ships.
+
+| `latest`
+| Newest Bundler release
+
+| `none`
+| Nothing
+
+| `2`, `2.6`, `2.6.9`
+| Newest matching release, unless it is already installed
+|===
+--
+
+[#platform-support]
+== Platform support
+
+The function runs on Linux on amd64 and arm64 with `glibc` 2.17 or newer or with `musl`, on macOS on arm64, and on Windows on amd64 and arm64. A version spec matches only releases with a build for the machine the job runs on.
+
+* *Ruby versions*: Ruby 3.2 and newer, or Ruby 3.3 and newer on Linux with `musl`. The function installs CRuby only, not JRuby, TruffleRuby, or development builds such as `head`.
+* *macOS on Intel*: No builds are available, so the default command fails. The `install-gems` command works with a Ruby that is already installed.
+* *Windows*: Later steps find `ruby`, `gem`, `bundle`, and the other executables in `cmd`, PowerShell, or Git Bash through small forwarding shims.
+
+[#see-also]
+== See also
+
+* Refer to xref:use:functions-intro.adoc[Functions Overview] for a starting point on using functions.
+* Refer to xref:use:functions-concepts.adoc[Functions Concepts] for how commands, arguments, versions, and validation work.
+* Refer to xref:use:functions-catalog.adoc[Functions Catalog] for the other functions CircleCI publishes.
